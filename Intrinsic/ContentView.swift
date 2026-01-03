@@ -111,15 +111,16 @@ struct ContentView: View {
             .frame(minWidth: 320, maxWidth: 400)
             
             // --- COLONNE DROITE (Résultats) ---
-            ZStack {
+            ZStack(alignment: .top) { // 1. On aligne tout en HAUT
                 Color(nsColor: .windowBackgroundColor)
+                    .ignoresSafeArea() // 2. La couleur remplit tout l'écran
                 
-                ScrollView { // Ajout d'un ScrollView au cas où ça dépasse en hauteur
+                ScrollView {
                     VStack(spacing: 20) {
                         Text("Résultat de la Valorisation")
                             .font(.title)
                             .opacity(0.5)
-                            .padding(.top)
+                            .padding(.top, 40) // Un peu d'air en haut
                         
                         // 1. Chiffres Principaux
                         HStack(spacing: 50) {
@@ -128,7 +129,7 @@ struct ContentView: View {
                                     .font(.headline)
                                     .foregroundColor(.secondary)
                                 Text(priceDisplay)
-                                    .font(.system(size: 32, weight: .bold))
+                                    .font(.system(size: 36, weight: .bold))
                             }
                             
                             Image(systemName: "arrow.right")
@@ -141,25 +142,27 @@ struct ContentView: View {
                                     .foregroundColor(.secondary)
                                 
                                 Text(String(format: "%.2f $", intrinsicValue))
-                                    .font(.system(size: 32, weight: .bold))
+                                    .font(.system(size: 36, weight: .bold))
                                     .foregroundColor(intrinsicValue > currentPrice ? .green : .red)
                             }
                         }
+                        .padding(.vertical, 20)
                         
-                        // 2. Graphique à Barres (Comparaison)
+                        // 2. Graphique à Barres
                         if currentPrice > 0 && intrinsicValue > 0 {
                             ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
                                 .frame(height: 180)
                                 .padding(.horizontal, 40)
                         }
                         
-                        // 3. NOUVEAU : Graphique Linéaire (Projection)
+                        // 3. Graphique Linéaire
                         if !projectionData.isEmpty && intrinsicValue > 0 {
                             ProjectedGrowthChart(data: projectionData)
-                                .padding(.horizontal)
+                                .padding(.horizontal, 40)
+                                .padding(.vertical, 20)
                         }
                         
-                        // 4. Marge de sécurité & Bouton
+                        // 4. Marge & Bouton
                         VStack(spacing: 20) {
                             if currentPrice > 0 && intrinsicValue > 0 {
                                 let margin = ((intrinsicValue - currentPrice) / intrinsicValue) * 100
@@ -187,11 +190,12 @@ struct ContentView: View {
                             .buttonStyle(.borderedProminent)
                             .controlSize(.large)
                         }
-                        .padding(.bottom, 30)
+                        .padding(.bottom, 50) // Espace en bas pour le scroll
                     }
-                    .padding()
+                    .frame(maxWidth: .infinity) // Le contenu prend toute la largeur
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity) // La colonne prend toute la place dispo
         }
     }
     
