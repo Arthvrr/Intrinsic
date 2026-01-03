@@ -1,7 +1,5 @@
 import SwiftUI
-import Charts // Indispensable pour l'interactivité du graphe
-
-// https://stockanalysis.com/stocks
+import Charts
 
 // --- STRUCTURES DE DONNÉES ---
 
@@ -76,7 +74,7 @@ struct ContentView: View {
                             Button("Charger") { fetchPrice() }
                         }
                         HStack {
-                            Text("Prix Marché :")
+                            Text("Prix actuel du Marché :")
                             Spacer()
                             if isLoading { ProgressView().scaleEffect(0.5) }
                             Text(priceDisplay).bold()
@@ -85,27 +83,26 @@ struct ContentView: View {
                     
                     Section(header: Text("Fondamentaux")) {
                         inputRowString(label: "FCF / Action", value: $fcfInput, helpText: "Free Cash Flow par action")
-                        inputRowString(label: "Nombre d'actions", value: $sharesInput, helpText: "Nombre d'actions en circulation (Milliards")
-                        inputRowString(label: "Cash Total", value: $cashInput, helpText: "Cash + Placements (Milliards)")
-                        inputRowString(label: "Dette Totale", value: $debtInput, helpText: "Dette Totale (Milliards)")
+                        inputRowString(label: "Nombre d'actions", value: $sharesInput, helpText: "Nombre total d'actions en circulation (en Milliards)")
+                        inputRowString(label: "Cash Total", value: $cashInput, helpText: "Cash + Placements à court terme (en Milliards)")
+                        inputRowString(label: "Dette Totale", value: $debtInput, helpText: "Dette Totale (en Milliards)")
                     }
                     
                     Section(header: Text("Estimations Voulues")) {
                         
                         inputRowDouble(label: "Croissance FCF", value: $growthRate, suffix: "%",
-                                           helpText: "Estimation de la croissance annuelle du Free Cash Flow sur les 5 prochaines années.")
+                                       helpText: "À quelle vitesse le Free Cash Flow va augmenter chaque année pendant 5 ans ?")
                             
                         inputRowDouble(label: "Taux d'Actualisation", value: $discountRate, suffix: "%",
-                                       helpText: "Le rendement annuel minimum que VOUS exigez pour investir dans l'entreprise.")
+                                       helpText: "Le retour sur investissement annuel que VOUS voulez.\nPlus ce chiffre est haut, plus le prix d'achat doit être bas.")
 
                         inputRowDouble(label: "Multiple de Sortie", value: $exitMultiple, suffix: "x",
-                           helpText: "Estimation du PER auquel l'action s'échangera dans 5 ans.")
+                           helpText: "Dans 5 ans, à quel multiple de ses bénéfices (PER) l'entreprise se revendra-t-elle ?")
                     }
                 }
                 .formStyle(.grouped)
-                
-                // 3. LE BOUTON CALCULER (ICI MAINTENANT !)
-                // Il est hors du Form, donc il reste épinglé en bas
+              
+                // 3. LE BOUTON CALCULER
                 Divider()
                 Button(action: {
                     calculateIntrinsicValue()
@@ -117,18 +114,18 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .padding() // Marge autour du bouton
-                .background(Color(nsColor: .windowBackgroundColor)) // Fond pour cacher le form qui scrolle dessous
+                .padding()
+                .background(Color(nsColor: .windowBackgroundColor))
             }
             .frame(minWidth: 320, maxWidth: 400)
             
             // --- COLONNE DROITE (Résultats) ---
             ZStack(alignment: .top) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
-                
+              
                 ScrollView {
                     VStack(spacing: 30) {
-                        
+                       
                         // En-tête Chiffres
                         ResultHeaderView(
                             priceDisplay: priceDisplay,
@@ -136,20 +133,20 @@ struct ContentView: View {
                             currentPrice: currentPrice
                         )
                         .padding(.top, 40)
-                        
+                       
                         // Graphique à Barres
                         if currentPrice > 0 && intrinsicValue > 0 {
                             ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
                                 .frame(height: 180)
                                 .padding(.horizontal)
                         }
-                        
+                       
                         // Graphique Linéaire INTERACTIF
                         if !projectionData.isEmpty && intrinsicValue > 0 {
                             ProjectedGrowthChart(data: projectionData)
                                 .padding(.horizontal)
                         }
-                        
+                       
                         // Matrice de Sensibilité
                         if intrinsicValue > 0 {
                             SensitivityMatrixView(
@@ -169,7 +166,7 @@ struct ContentView: View {
                                     .font(.caption).fontWeight(.bold)
                                     .foregroundColor(margin > 0 ? .green : .red)
                                     .textCase(.uppercase)
-                                
+                             
                                 Text(String(format: "%.1f %%", abs(margin)))
                                     .font(.title2).bold()
                                     .foregroundColor(margin > 0 ? .green : .red)
@@ -284,10 +281,16 @@ struct ContentView: View {
         }.resume()
     }
     
+    // --- UPDATE : HELPERS UI AVEC BOUTON INFO ---
+    
     func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View {
         HStack {
-            Text(label).help(helpText)
-            Image(systemName: "info.circle").font(.caption2).opacity(0.5).help(helpText)
+            Text(label)
+                .help(helpText) // Garde le tooltip natif (délai)
+            
+            // Nouveau Bouton Info Interactif
+            InfoButton(helpText: helpText)
+            
             Spacer()
             TextField("0", text: value)
                 .textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing)
@@ -296,8 +299,12 @@ struct ContentView: View {
     
     func inputRowDouble(label: String, value: Binding<Double>, suffix: String, helpText: String) -> some View {
         HStack {
-            Text(label).help(helpText)
-            Image(systemName: "info.circle").font(.caption2).opacity(0.5).help(helpText)
+            Text(label)
+                .help(helpText)
+            
+            // Nouveau Bouton Info Interactif
+            InfoButton(helpText: helpText)
+            
             Spacer()
             HStack(spacing: 2) {
                 TextField("", value: value, format: .number)
@@ -308,7 +315,29 @@ struct ContentView: View {
     }
 }
 
-// --- SOUS-VUES (COMPOSANTS) ---
+// --- NOUVEAU COMPOSANT : BOUTON INFO (POPOVER) ---
+struct InfoButton: View {
+    let helpText: String
+    @State private var showPopover = false
+    
+    var body: some View {
+        Button(action: { showPopover.toggle() }) {
+            Image(systemName: "info.circle")
+                .foregroundColor(.secondary)
+                .contentShape(Rectangle()) // Rend la zone de clic un peu plus confortable
+        }
+        .buttonStyle(.plain) // Enlève le style bouton classique pour garder juste l'icône
+        .popover(isPresented: $showPopover) {
+            Text(helpText)
+                .padding()
+                .frame(width: 250) // Largeur de la bulle d'aide
+                .multilineTextAlignment(.leading)
+        }
+    }
+}
+
+
+// --- AUTRES COMPOSANTS (Inchangés) ---
 
 struct ResultHeaderView: View {
     var priceDisplay: String
@@ -426,11 +455,9 @@ struct BarView: View {
     }
 }
 
-// 4. Graphique Linéaire INTERACTIF (Mis à jour)
 struct ProjectedGrowthChart: View {
     var data: [ProjectionPoint]
     
-    // Pour détecter la souris
     @State private var selectedYear: Int?
     
     var isPositiveGrowth: Bool {
@@ -444,19 +471,15 @@ struct ProjectedGrowthChart: View {
                 .font(.headline).foregroundColor(.secondary)
             
             Chart(data) { point in
-                // La ligne
                 LineMark(x: .value("Année", point.year), y: .value("Valeur", point.value))
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(isPositiveGrowth ? Color.green.gradient : Color.red.gradient)
                     .lineStyle(StrokeStyle(lineWidth: 3))
                 
-                // La zone remplie
                 AreaMark(x: .value("Année", point.year), yStart: .value("Base", data.first?.value ?? 0), yEnd: .value("Valeur", point.value))
                     .interpolationMethod(.catmullRom)
                     .foregroundStyle(isPositiveGrowth ? Color.green.opacity(0.1).gradient : Color.red.opacity(0.1).gradient)
                 
-                // --- INTERACTIVITÉ ---
-                // Si l'utilisateur survole une année, on affiche une ligne verticale et la valeur
                 if let selectedYear, selectedYear == point.year {
                     RuleMark(x: .value("Année", selectedYear))
                         .foregroundStyle(Color.gray.opacity(0.5))
@@ -476,12 +499,11 @@ struct ProjectedGrowthChart: View {
                             .shadow(radius: 2)
                         }
                     
-                    // On met un point en évidence
                     PointMark(x: .value("Année", point.year), y: .value("Valeur", point.value))
                         .foregroundStyle(Color.primary)
                 }
             }
-            .chartXSelection(value: $selectedYear) // Active la détection de la souris
+            .chartXSelection(value: $selectedYear)
             .chartXScale(domain: 0...5)
             .frame(height: 150)
         }
