@@ -65,7 +65,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                     .background(Color.blue.opacity(0.1))
-                
+               
                 // 2. Formulaire (Scrollable)
                 Form {
                     Section(header: Text("Recherche")) {
@@ -81,7 +81,8 @@ struct ContentView: View {
                         }
                     }
                     
-                    Section(header: Text("Fondamentaux")) {
+                    // --- AJOUT DU LIEN DANS LE FOOTER DE CETTE SECTION ---
+                    Section(header: Text("Fondamentaux"), footer: stockAnalysisLink) {
                         inputRowString(label: "FCF / Action", value: $fcfInput, helpText: "Free Cash Flow par action")
                         inputRowString(label: "Nombre d'actions", value: $sharesInput, helpText: "Nombre total d'actions en circulation (en Milliards)")
                         inputRowString(label: "Cash Total", value: $cashInput, helpText: "Cash + Placements à court terme (en Milliards)")
@@ -101,7 +102,7 @@ struct ContentView: View {
                     }
                 }
                 .formStyle(.grouped)
-              
+             
                 // 3. LE BOUTON CALCULER
                 Divider()
                 Button(action: {
@@ -122,10 +123,10 @@ struct ContentView: View {
             // --- COLONNE DROITE (Résultats) ---
             ZStack(alignment: .top) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
-              
+             
                 ScrollView {
                     VStack(spacing: 30) {
-                       
+                        
                         // En-tête Chiffres
                         ResultHeaderView(
                             priceDisplay: priceDisplay,
@@ -133,20 +134,20 @@ struct ContentView: View {
                             currentPrice: currentPrice
                         )
                         .padding(.top, 40)
-                       
+                        
                         // Graphique à Barres
                         if currentPrice > 0 && intrinsicValue > 0 {
                             ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
                                 .frame(height: 180)
                                 .padding(.horizontal)
                         }
-                       
+                        
                         // Graphique Linéaire INTERACTIF
                         if !projectionData.isEmpty && intrinsicValue > 0 {
                             ProjectedGrowthChart(data: projectionData)
                                 .padding(.horizontal)
                         }
-                       
+                        
                         // Matrice de Sensibilité
                         if intrinsicValue > 0 {
                             SensitivityMatrixView(
@@ -181,6 +182,24 @@ struct ContentView: View {
                     .padding(.horizontal, 20)
                 }
             }
+        }
+    }
+    
+    // --- COMPOSANT LIEN WEB ---
+    var stockAnalysisLink: some View {
+        let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Construit le lien dynamique vers la page Financials
+        let urlString = cleanTicker.isEmpty
+            ? "https://stockanalysis.com"
+            : "https://stockanalysis.com/stocks/\(cleanTicker)/financials/"
+        
+        return Link(destination: URL(string: urlString)!) {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.up.right.square")
+                Text("Récupérer les données sur StockAnalysis.com")
+            }
+            .font(.caption)
+            .padding(.top, 5)
         }
     }
     
