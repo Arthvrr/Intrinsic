@@ -1,6 +1,8 @@
 import SwiftUI
 import Charts // Indispensable pour l'interactivité du graphe
 
+// https://stockanalysis.com/stocks
+
 // --- STRUCTURES DE DONNÉES ---
 
 struct YahooResponse: Codable { let chart: YahooChart }
@@ -83,28 +85,21 @@ struct ContentView: View {
                     
                     Section(header: Text("Fondamentaux")) {
                         inputRowString(label: "FCF / Action", value: $fcfInput, helpText: "Free Cash Flow par action")
-                        inputRowString(label: "Nb Actions (Mds)", value: $sharesInput, helpText: "Milliards d'actions")
+                        inputRowString(label: "Nombre d'actions", value: $sharesInput, helpText: "Nombre d'actions en circulation (Milliards")
                         inputRowString(label: "Cash Total", value: $cashInput, helpText: "Cash + Placements (Milliards)")
                         inputRowString(label: "Dette Totale", value: $debtInput, helpText: "Dette Totale (Milliards)")
                     }
                     
-                    Section(header: Text("Méthode de Sortie (Année 5)")) {
-                        Picker("Méthode", selection: $selectedMethod) {
-                            ForEach(ValuationMethod.allCases) { method in
-                                Text(method.rawValue).tag(method)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.vertical, 5)
+                    Section(header: Text("Estimations Voulues")) {
                         
-                        inputRowDouble(label: "Croissance (1-5 ans)", value: $growthRate, suffix: "%", helpText: "Croissance annuelle sur 5 ans.")
-                        inputRowDouble(label: "Taux d'actualisation", value: $discountRate, suffix: "%", helpText: "Ton exigence de rentabilité (Risque).")
+                        inputRowDouble(label: "Croissance FCF", value: $growthRate, suffix: "%",
+                                           helpText: "Estimation de la croissance annuelle du Free Cash Flow sur les 5 prochaines années.")
+                            
+                        inputRowDouble(label: "Taux d'Actualisation", value: $discountRate, suffix: "%",
+                                       helpText: "Le rendement annuel minimum que VOUS exigez pour investir dans l'entreprise.")
 
-                        if selectedMethod == .gordon {
-                            inputRowDouble(label: "Croissance Perpétuelle", value: $terminalGrowth, suffix: "%", helpText: "Croissance à l'infini après l'année 5 (Max 3%).")
-                        } else {
-                            inputRowDouble(label: "Multiple de Sortie", value: $exitMultiple, suffix: "x", helpText: "A combien x le FCF l'action se vendra dans 5 ans ?")
-                        }
+                        inputRowDouble(label: "Multiple de Sortie", value: $exitMultiple, suffix: "x",
+                           helpText: "Estimation du PER auquel l'action s'échangera dans 5 ans.")
                     }
                 }
                 .formStyle(.grouped)
