@@ -37,19 +37,19 @@ struct ContentView: View {
     @State private var currentPrice: Double = 0.0
 
     // Saisie
-    @State private var fcfInput: String = "3.15"
-    @State private var sharesInput: String = "24.30"
-    @State private var cashInput: String = "11.486"
-    @State private var debtInput: String = "10.822"
+    @State private var fcfInput: String = "0.00"
+    @State private var sharesInput: String = "0.00"
+    @State private var cashInput: String = "0.00"
+    @State private var debtInput: String = "0.00"
 
     // Hypothèses
-    @State private var growthRate: Double = 20.0
-    @State private var discountRate: Double = 9.0
+    @State private var growthRate: Double = 0.0
+    @State private var discountRate: Double = 0.0
     
     // Méthode
     @State private var selectedMethod: ValuationMethod = .multiples
-    @State private var terminalGrowth: Double = 2.5
-    @State private var exitMultiple: Double = 45.0
+    @State private var terminalGrowth: Double = 0.0
+    @State private var exitMultiple: Double = 0.0
     
     // Résultats
     @State private var intrinsicValue: Double = 0.0
