@@ -64,12 +64,27 @@ struct ContentView: View {
             // --- COLONNE GAUCHE (Paramètres) - REPLIABLE ---
             if isSidebarVisible {
                 VStack(spacing: 0) {
-                    // 1. Titre
-                    Text("Paramètres DCF")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Color.blue.opacity(0.1))
+                    // 1. Titre + BOUTON FERMETURE
+                    HStack {
+                        Text("Paramètres DCF")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        // Bouton pour fermer la sidebar (DÉPLACÉ ICI)
+                        Button(action: {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                isSidebarVisible = false
+                            }
+                        }) {
+                            Image(systemName: "sidebar.left")
+                                .foregroundColor(.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Masquer la barre latérale")
+                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.1))
                     
                     // 2. Formulaire
                     Form {
@@ -167,27 +182,29 @@ struct ContentView: View {
                     .padding(.horizontal, 20)
                 }
                 
-                // BOUTON TOGGLE SIDEBAR (Flottant en haut à gauche)
-                Button(action: {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        isSidebarVisible.toggle()
+                // BOUTON OUVERTURE SIDEBAR (Visible SEULEMENT si sidebar fermée)
+                if !isSidebarVisible {
+                    Button(action: {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            isSidebarVisible = true
+                        }
+                    }) {
+                        Image(systemName: "sidebar.right") // Icône pour rouvrir
+                            .font(.title2)
+                            .foregroundColor(.primary)
+                            .padding(10)
+                            .background(.regularMaterial)
+                            .cornerRadius(8)
                     }
-                }) {
-                    Image(systemName: "sidebar.left")
-                        .font(.title2)
-                        .foregroundColor(.primary)
-                        .padding(10)
-                        .background(.regularMaterial)
-                        .cornerRadius(8)
+                    .padding()
+                    .buttonStyle(.plain)
+                    .help("Afficher les paramètres")
                 }
-                .padding()
-                .buttonStyle(.plain)
             }
         }
     }
     
-    // --- HELPERS & LOGIQUE (Inchangés pour le calcul) ---
-    // (J'ai condensé ici pour la lisibilité, mais c'est le même code que précédemment)
+    // --- HELPERS & LOGIQUE ---
     
     var stockAnalysisLink: some View {
         let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -252,11 +269,35 @@ struct ContentView: View {
         }.resume()
     }
     
+    // --- HELPERS UI : CORRECTION LARGEUR TEXTFIELD ---
+    
     func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View {
-        HStack { Text(label).help(helpText); InfoButton(helpText: helpText); Spacer(); TextField("0", text: value).textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing) }
+        HStack {
+            Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8)
+            InfoButton(helpText: helpText)
+            Spacer()
+            // LARGEUR AUGMENTÉE DE 80 à 100
+            TextField("0", text: value)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 100)
+                .multilineTextAlignment(.trailing)
+        }
     }
+    
     func inputRowDouble(label: String, value: Binding<Double>, suffix: String, helpText: String) -> some View {
-        HStack { Text(label).help(helpText); InfoButton(helpText: helpText); Spacer(); HStack(spacing: 2) { TextField("", value: value, format: .number).textFieldStyle(.roundedBorder).frame(width: 60).multilineTextAlignment(.trailing); Text(suffix).font(.caption).foregroundColor(.secondary) } }
+        HStack {
+            Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8)
+            InfoButton(helpText: helpText)
+            Spacer()
+            HStack(spacing: 2) {
+                // LARGEUR AUGMENTÉE DE 60 à 80
+                TextField("", value: value, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 80)
+                    .multilineTextAlignment(.trailing)
+                Text(suffix).font(.caption).foregroundColor(.secondary)
+            }
+        }
     }
 }
 
@@ -405,7 +446,7 @@ struct SensitivityMatrixView: View {
     }
 }
 
-// --- AUTRES CHARTS (Inchangés mais nécessaire pour la compil) ---
+// --- AUTRES CHARTS ---
 
 struct ValuationBarChart: View {
     var marketPrice: Double; var intrinsicValue: Double
