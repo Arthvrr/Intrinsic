@@ -1,7 +1,7 @@
 import SwiftUI
 import Charts
 
-// --- DATA STRUCTURES (API V8 - CHART - ROBUSTE POUR LE PRIX) ---
+// --- DATA STRUCTURES (CHART) ---
 struct YahooResponse: Codable { let chart: YahooChart }
 struct YahooChart: Codable { let result: [YahooResult]?; let error: YahooError? }
 struct YahooError: Codable { let description: String? }
@@ -12,6 +12,17 @@ struct YahooMeta: Codable {
     let regularMarketPrice: Double?
     let previousClose: Double?
     let chartPreviousClose: Double?
+}
+
+// --- DATA STRUCTURES (QUOTE) ---
+struct YahooQuoteResponse: Codable { let quoteResponse: QuoteResult }
+struct QuoteResult: Codable { let result: [QuoteDetail]?; let error: YahooError? }
+struct QuoteDetail: Codable {
+    let symbol: String
+    let regularMarketPrice: Double?
+    let currency: String?
+    let trailingPE: Double?
+    let forwardPE: Double?
 }
 
 enum ValuationMethod: String, CaseIterable, Identifiable {
@@ -105,8 +116,8 @@ struct ContentView: View {
                             inputRowString(label: "Debt (B)", value: $debtInput, helpText: "Total Debt (Billions)")
                         }
                         
-                        // SECTION P/E (MANUEL)
-                        Section(header: Text("P/E Ratios (Context)")) {
+                        // SECTION P/E (MANUEL) + LIEN GURUFOCUS AJOUTÉ
+                        Section(header: Text("P/E Ratios (Context)"), footer: guruFocusLink) {
                             inputRowString(label: "Current P/E", value: $currentPEInput, helpText: "Enter the current P/E manually")
                             inputRowString(label: "Historical P/E", value: $historicalPEInput, helpText: "Enter the 5-10y average P/E manually")
                         }
@@ -197,6 +208,15 @@ struct ContentView: View {
             HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("StockAnalysis Data") }.font(.caption).padding(.top, 5)
         }
     }
+    
+    // --- NOUVEAU LIEN GURUFOCUS ---
+    var guruFocusLink: some View {
+        let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines)
+        let urlString = cleanTicker.isEmpty ? "https://www.gurufocus.com" : "https://www.gurufocus.com/term/pettm/\(cleanTicker)"
+        return Link(destination: URL(string: urlString)!) {
+            HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("GuruFocus P/E Data") }.font(.caption).padding(.top, 5)
+        }
+    }
 
     func parseDouble(_ input: String) -> Double {
         let clean = input.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -254,7 +274,6 @@ struct ContentView: View {
         switch code { case "EUR": return "€"; case "GBP": return "£"; case "JPY": return "¥"; case "CNY": return "¥"; case "INR": return "₹"; case "CAD": return "C$"; case "AUD": return "A$"; default: return "$" }
     }
     
-    // --- ANCIENNE FONCTION ROBUSTE POUR LE PRIX ---
     func fetchPrice() {
         let clean = ticker.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\"", with: "").uppercased()
         guard !clean.isEmpty, let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(clean)?interval=1d") else { return }
