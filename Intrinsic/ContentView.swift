@@ -70,9 +70,10 @@ struct ContentView: View {
     @State private var discountRate: Double = 0.0
     @State private var exitMultiple: Double = 0.0
     
-    // Method
+    // Method & Safety
     @State private var selectedMethod: ValuationMethod = .multiples
     @State private var terminalGrowth: Double = 0.0
+    @State private var marginOfSafety: Double = 10.0
     
     // Results
     @State private var intrinsicValue: Double = 0.0
@@ -116,7 +117,6 @@ struct ContentView: View {
                             inputRowString(label: "Debt (B)", value: $debtInput, helpText: "Total Debt (Billions)")
                         }
                         
-                        // SECTION P/E (MANUEL) + LIEN GURUFOCUS AJOUTÉ
                         Section(header: Text("P/E Ratios (Context)"), footer: guruFocusLink) {
                             inputRowString(label: "Current P/E", value: $currentPEInput, helpText: "Enter the current P/E manually")
                             inputRowString(label: "Historical P/E", value: $historicalPEInput, helpText: "Enter the 5-10y average P/E manually")
@@ -129,7 +129,7 @@ struct ContentView: View {
                         }
                     }
                     .formStyle(.grouped)
-                  
+                
                     Divider()
                     Button(action: { calculateIntrinsicValue() }) {
                         Text("CALCULATE").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
@@ -144,39 +144,43 @@ struct ContentView: View {
             // --- RIGHT COLUMN (Results) ---
             ZStack(alignment: .topLeading) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
-              
+            
                 ScrollView {
                     VStack(spacing: 30) {
-                        // Header Results
                         ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
                             .padding(.top, 40)
                         
-                        // Reverse DCF
                         if hasCalculated && currentPrice > 0 {
                             ReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.horizontal)
-                                .id("ReverseDCF-\(marketImpliedGrowth)-\(growthRate)")
                         }
-                       
-                        // Bar Chart
+                        
                         if hasCalculated && currentPrice > 0 {
                             ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
                                 .frame(height: 180).padding(.horizontal)
                         }
-                       
-                        // Line Chart
+                        
                         if !projectionData.isEmpty && hasCalculated {
                             ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.horizontal)
                         }
-                       
-                        // Heatmap
+                        
                         if hasCalculated {
                             SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
                                 .padding(.horizontal)
                         }
                         
-                        // --- P/E COMPARISON CHART (MANUEL) ---
+                        if hasCalculated {
+                            FinancialHealthView(
+                                cash: parseDouble(cashInput),
+                                debt: parseDouble(debtInput),
+                                fcfPerShare: parseDouble(fcfInput),
+                                growthRate: growthRate,
+                                symbol: currencySymbol
+                            )
+                            .padding(.horizontal)
+                        }
+                        
                         if hasCalculated {
                             PEComparisonChart(
                                 currentPE: parseDouble(currentPEInput),
@@ -184,7 +188,27 @@ struct ContentView: View {
                                 exitMultiple: exitMultiple
                             )
                             .padding(.horizontal)
+                            
+                            if parseDouble(currentPEInput) > 0 && growthRate > 0 {
+                                PEGRatioGauge(
+                                    currentPE: parseDouble(currentPEInput),
+                                    growthRate: growthRate
+                                )
+                                .padding(.horizontal)
+                            }
+                        }
+                        
+                        if hasCalculated && intrinsicValue > 0 {
+                            BuyBoxView(
+                                intrinsicValue: intrinsicValue,
+                                currentPrice: currentPrice,
+                                marginOfSafety: $marginOfSafety,
+                                symbol: currencySymbol
+                            )
+                            .padding(.horizontal)
                             .padding(.bottom, 50)
+                        } else {
+                            Color.clear.frame(height: 50)
                         }
                     }
                     .frame(maxWidth: .infinity).padding(.horizontal, 20)
@@ -209,7 +233,6 @@ struct ContentView: View {
         }
     }
     
-    // --- NOUVEAU LIEN GURUFOCUS ---
     var guruFocusLink: some View {
         let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines)
         let urlString = cleanTicker.isEmpty ? "https://www.gurufocus.com" : "https://www.gurufocus.com/term/pettm/\(cleanTicker)"
@@ -282,15 +305,13 @@ struct ContentView: View {
             defer { DispatchQueue.main.async { isLoading = false } }
             if let data = data, let resp = try? JSONDecoder().decode(YahooResponse.self, from: data), let res = resp.chart.result?.first {
                 let p = res.meta.regularMarketPrice ?? res.meta.previousClose ?? 0.0
-                
-                // Detection devise
                 let currencyCode = res.meta.currency ?? "USD"
                 let sym = getCurrencySymbol(code: currencyCode)
                 
                 DispatchQueue.main.async {
                     self.currentPrice = p
                     self.currencySymbol = sym
-                    self.priceDisplay = String(format: "%.2f %@", p, sym) // Affichage propre : 185.04 €
+                    self.priceDisplay = String(format: "%.2f %@", p, sym)
                 }
             }
         }.resume()
@@ -312,6 +333,153 @@ struct InfoButton: View {
     var body: some View { Button(action: { show.toggle() }) { Image(systemName: "info.circle").foregroundColor(.secondary) }.buttonStyle(.plain).popover(isPresented: $show) { Text(helpText).padding().frame(width: 250) } }
 }
 
+struct FinancialHealthView: View {
+    var cash: Double
+    var debt: Double
+    var fcfPerShare: Double
+    var growthRate: Double
+    var symbol: String
+    
+    var netCash: Double { cash - debt }
+    
+    var fcfProjections: [Double] {
+        var values: [Double] = []
+        var current = fcfPerShare
+        for _ in 1...5 {
+            current = current * (1 + growthRate / 100.0)
+            values.append(current)
+        }
+        return values
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            HStack {
+                Image(systemName: "shield.checkerboard").font(.title2).foregroundColor(.blue)
+                Text("Risk & Growth Check").font(.headline).foregroundColor(.secondary)
+                Spacer()
+            }
+            
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Balance Sheet").font(.caption).bold().foregroundColor(.secondary)
+                    
+                    if cash == 0 && debt == 0 {
+                        Text("Enter Cash & Debt").font(.caption).italic().foregroundColor(.secondary)
+                    } else {
+                        HStack(alignment: .bottom, spacing: 15) {
+                            VStack {
+                                Text(String(format: "%.1fB", cash)).font(.caption2)
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.green.gradient)
+                                    .frame(width: 30, height: 60 * (cash / max(cash, debt, 1.0)))
+                                Text("Cash").font(.tiny).bold()
+                            }
+                            
+                            VStack {
+                                Text(String(format: "%.1fB", debt)).font(.caption2)
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.red.gradient)
+                                    .frame(width: 30, height: 60 * (debt / max(cash, debt, 1.0)))
+                                Text("Debt").font(.tiny).bold()
+                            }
+                        }.frame(height: 80)
+                        
+                        Text(netCash >= 0 ? "Net Cash (Safe)" : "Net Debt (Leveraged)")
+                            .font(.tiny).bold()
+                            .foregroundColor(netCash >= 0 ? .green : .red)
+                            .padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(10)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+                
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Proj. FCF Growth (5Y)").font(.caption).bold().foregroundColor(.secondary)
+                    
+                    if fcfPerShare > 0 {
+                        HStack(alignment: .bottom, spacing: 8) {
+                            let data = fcfProjections
+                            let maxVal = (data.max() ?? 1.0) * 1.1
+                            
+                            ForEach(0..<5) { i in
+                                VStack(spacing: 2) {
+                                    Spacer()
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color.blue.gradient)
+                                        .frame(height: 60 * (data[i] / maxVal))
+                                    Text("\(Int(data[i]))").font(.system(size: 9))
+                                    Text("Y\(i+1)").font(.tiny).foregroundColor(.secondary)
+                                }
+                            }
+                        }.frame(height: 80)
+                        
+                        Text("CAGR: \(String(format: "%.1f", growthRate))%")
+                            .font(.tiny).bold()
+                            .foregroundColor(growthRate > 0 ? .green : .red)
+                            .padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
+                    } else {
+                        Text("Enter Positive FCF").font(.caption).italic().foregroundColor(.secondary)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(10)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            }
+        }
+    }
+}
+
+struct BuyBoxView: View {
+    var intrinsicValue: Double
+    var currentPrice: Double
+    @Binding var marginOfSafety: Double
+    var symbol: String
+    
+    var targetBuyPrice: Double { intrinsicValue * (1.0 - (marginOfSafety / 100.0)) }
+    var isBuyable: Bool { currentPrice > 0 && currentPrice <= targetBuyPrice }
+    
+    var body: some View {
+        VStack(spacing: 15) {
+            HStack {
+                Image(systemName: "cart.fill.badge.plus").font(.title2).foregroundColor(isBuyable ? .green : .secondary)
+                Text("Entry Price Planner").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                Text(isBuyable ? "BUY ZONE" : "WAIT").font(.caption).fontWeight(.black).padding(.horizontal, 8).padding(.vertical, 4).background(isBuyable ? Color.green : Color.orange).foregroundColor(.white).cornerRadius(8)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("Margin of Safety").font(.caption).bold().foregroundColor(.secondary)
+                    Spacer()
+                    Text("\(Int(marginOfSafety))%").font(.body).bold().foregroundColor(.blue)
+                }
+                Slider(value: $marginOfSafety, in: 0...60, step: 5).tint(.blue)
+            }
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading) {
+                    Text("Target Buy Price").font(.caption).foregroundColor(.secondary)
+                    Text(String(format: "%.2f %@", targetBuyPrice, symbol)).font(.system(size: 32, weight: .bold)).foregroundColor(isBuyable ? .green : .primary)
+                }
+                Spacer()
+                if currentPrice > 0 {
+                    VStack(alignment: .trailing) {
+                        let delta = (currentPrice - targetBuyPrice) / targetBuyPrice * 100
+                        Text(isBuyable ? "Discount" : "Premium").font(.caption).foregroundColor(isBuyable ? .green : .orange)
+                        Text(String(format: "%@%.1f%%", isBuyable ? "-" : "+", abs(delta))).font(.title3).bold().foregroundColor(isBuyable ? .green : .orange)
+                    }
+                }
+            }
+        }
+        .padding().background(ZStack { Color(nsColor: .controlBackgroundColor); if isBuyable { Color.green.opacity(0.05) } }).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isBuyable ? Color.green : Color.gray.opacity(0.2), lineWidth: isBuyable ? 2 : 1))
+    }
+}
+
 struct ReverseDCFView: View {
     var impliedGrowth: Double; var userGrowth: Double; var currentPrice: Double; var symbol: String
     var isRisky: Bool { impliedGrowth > userGrowth }
@@ -327,7 +495,7 @@ struct ReverseDCFView: View {
                     Text(isRisky ? "(Higher than your \(String(format: "%.1f", userGrowth))%)" : "(Lower than your \(String(format: "%.1f", userGrowth))%)").font(.caption).foregroundColor(isRisky ? .red : .green).padding(.leading, 5)
                 }
             }
-        }.padding().frame(maxWidth: .infinity, alignment: .leading).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
+        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
     }
 }
 
@@ -363,7 +531,10 @@ struct SensitivityMatrixView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Sensitivity Matrix (7x7 Heatmap)").font(.headline).foregroundColor(.secondary)
+            HStack {
+                Image(systemName: "tablecells").font(.title2).foregroundColor(.blue)
+                Text("Sensitivity Matrix (7x7 Heatmap)").font(.headline).foregroundColor(.secondary)
+            }
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 GridRow {
                     Text("Disc. \\ Grwth").font(.caption2).foregroundColor(.secondary).frame(width: 70, alignment: .leading)
@@ -383,54 +554,57 @@ struct SensitivityMatrixView: View {
     }
 }
 
-// --- NEW CHART: P/E COMPARISON ---
 struct PEComparisonChart: View {
-    var currentPE: Double
-    var historicalPE: Double
-    var exitMultiple: Double
-    
+    var currentPE: Double; var historicalPE: Double; var exitMultiple: Double
     var data: [PEDataPoint] {
-        [
-            .init(type: "Historical", value: historicalPE, color: .gray.opacity(0.5)),
-            .init(type: "Current", value: currentPE, color: .gray),
-            .init(type: "Exit (Yr 5)", value: exitMultiple, color: .blue)
-        ]
+        [.init(type: "Historical", value: historicalPE, color: .gray.opacity(0.5)),
+         .init(type: "Current", value: currentPE, color: .gray),
+         .init(type: "Exit (Yr 5)", value: exitMultiple, color: .blue)]
     }
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Valuation Reality Check (P/E Ratios)").font(.headline).foregroundColor(.secondary)
-            
+            HStack {
+                Image(systemName: "chart.bar.xaxis").font(.title2).foregroundColor(.blue)
+                Text("Valuation Reality Check (P/E Ratios)").font(.headline).foregroundColor(.secondary)
+            }
             if currentPE == 0 && historicalPE == 0 && exitMultiple == 0 {
                 Text("Enter P/E data to visualize comparison").font(.caption).italic().foregroundColor(.secondary)
             } else {
                 Chart(data) { point in
-                    BarMark(
-                        x: .value("Type", point.type),
-                        y: .value("P/E Ratio", point.value)
-                    )
-                    .foregroundStyle(point.color.gradient)
-                    .annotation(position: .top) {
-                        Text(String(format: "%.1fx", point.value))
-                            .font(.caption).bold().foregroundColor(.primary)
-                    }
-                }
-                .chartXAxis {
-                    AxisMarks { value in
-                        AxisValueLabel()
-                    }
-                }
-                .frame(height: 200)
+                    BarMark(x: .value("Type", point.type), y: .value("P/E Ratio", point.value)).foregroundStyle(point.color.gradient).annotation(position: .top) { Text(String(format: "%.1fx", point.value)).font(.caption).bold() }
+                }.frame(height: 200)
             }
-        }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
-// --- OTHER CHARTS ---
+struct PEGRatioGauge: View {
+    var currentPE: Double; var growthRate: Double
+    var peg: Double { growthRate > 0 ? currentPE / growthRate : 0.0 }
+    var pegProgress: CGFloat { CGFloat(min(peg, 3.0) / 3.0) }
+    var statusText: String { peg < 1.0 ? "Undervalued (<1.0)" : peg < 1.5 ? "Fair Value (1.0-1.5)" : "Overvalued (>1.5)" }
+    var statusColor: Color { peg < 1.0 ? .green : peg < 1.5 ? .yellow : .red }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "gauge.with.needle").font(.title2).foregroundColor(.blue)
+                Text("PEG Ratio (Lynch Valuation)").font(.headline).foregroundColor(.secondary)
+                Spacer(); Text(String(format: "%.2f", peg)).font(.title2).bold().foregroundColor(statusColor)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(LinearGradient(stops: [.init(color: .green.opacity(0.8), location: 0.0), .init(color: .green.opacity(0.8), location: 0.33), .init(color: .yellow, location: 0.33), .init(color: .yellow, location: 0.5), .init(color: .red.opacity(0.8), location: 0.5), .init(color: .red.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10)
+                    Image(systemName: "arrowtriangle.down.fill").foregroundColor(.primary).font(.title3).offset(x: (geo.size.width * pegProgress) - 10, y: -20)
+                    Text(statusText).font(.caption2).bold().foregroundColor(statusColor).offset(x: (geo.size.width * pegProgress) - 10, y: 22).fixedSize()
+                }
+            }.frame(height: 50)
+            HStack { Text("0.0").font(.tiny); Spacer(); Text("1.0 (Cheap)").font(.tiny).padding(.trailing, 40); Spacer(); Text("3.0+").font(.tiny) }.foregroundColor(.gray)
+        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+    }
+}
+
+extension Font { static let tiny = Font.system(size: 10) }
+
 struct ValuationBarChart: View {
     var marketPrice: Double; var intrinsicValue: Double; var symbol: String
     private var maxValue: Double { max(marketPrice, intrinsicValue) * 1.1 }
@@ -443,6 +617,7 @@ struct ValuationBarChart: View {
         }
     }
 }
+
 struct BarView: View {
     var value: Double; var maxValue: Double; var label: String; var color: Color; var height: CGFloat; var symbol: String
     var body: some View {
@@ -461,15 +636,17 @@ struct ProjectedGrowthChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Value Projection vs Price").font(.headline).foregroundColor(.secondary)
+                HStack {
+                    Image(systemName: "chart.line.uptrend.xyaxis").font(.title2).foregroundColor(.blue)
+                    Text("Value Projection vs Price").font(.headline).foregroundColor(.secondary)
+                }
                 HStack(spacing: 15) {
                     HStack(spacing: 5) { Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption); Text("Intrinsic Value").font(.caption).bold() }
                     HStack(spacing: 5) { Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption); Text("Current Price").font(.caption).bold() }
                 }
             }
             Chart {
-                RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
-                    .annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))\(symbol)").font(.caption2).foregroundColor(.red) }
+                RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5])).annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))\(symbol)").font(.caption2).foregroundColor(.red) }
                 ForEach(data) { point in
                     LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone)
                     PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60)
