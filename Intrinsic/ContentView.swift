@@ -1,8 +1,7 @@
 import SwiftUI
 import Charts
 
-// --- STRUCTURES DE DONNÉES (Inchangées) ---
-
+// --- DATA STRUCTURES ---
 struct YahooResponse: Codable { let chart: YahooChart }
 struct YahooChart: Codable { let result: [YahooResult]?; let error: YahooError? }
 struct YahooError: Codable { let description: String? }
@@ -16,8 +15,8 @@ struct YahooMeta: Codable {
 }
 
 enum ValuationMethod: String, CaseIterable, Identifiable {
-    case gordon = "Conservateur (Perpétuel)"
-    case multiples = "Marché (Multiples)"
+    case gordon = "Conservative (Perpetual)"
+    case multiples = "Market (Multiples)"
     var id: Self { self }
 }
 
@@ -27,190 +26,152 @@ struct ProjectionPoint: Identifiable {
     let value: Double
 }
 
-// --- VUE PRINCIPALE ---
+// --- MAIN VIEW ---
 
 struct ContentView: View {
-    // --- ÉTATS ---
+    // --- STATES ---
     @State private var ticker: String = "NVDA"
     @State private var priceDisplay: String = "---"
     @State private var isLoading = false
     @State private var currentPrice: Double = 0.0
 
-    // UI States
-    @State private var isSidebarVisible: Bool = true // Pour replier la sidebar
+    @State private var isSidebarVisible: Bool = true
 
-    // Saisie
+    // Inputs
     @State private var fcfInput: String = "0.00"
     @State private var sharesInput: String = "0.00"
     @State private var cashInput: String = "0.00"
     @State private var debtInput: String = "0.00"
 
-    // Hypothèses
+    // Assumptions
     @State private var growthRate: Double = 0.0
     @State private var discountRate: Double = 0.0
     
-    // Méthode
+    // Method
     @State private var selectedMethod: ValuationMethod = .multiples
     @State private var terminalGrowth: Double = 0.0
     @State private var exitMultiple: Double = 0.0
     
-    // Résultats
+    // Results
     @State private var intrinsicValue: Double = 0.0
+    @State private var marketImpliedGrowth: Double = 0.0
     @State private var projectionData: [ProjectionPoint] = []
+    
+    // Track if calculation has been run at least once to show results
+    @State private var hasCalculated: Bool = false
 
     var body: some View {
         HStack(spacing: 0) {
             
-            // --- COLONNE GAUCHE (Paramètres) - REPLIABLE ---
+            // --- LEFT COLUMN (Sidebar) ---
             if isSidebarVisible {
                 VStack(spacing: 0) {
-                    // 1. Titre + BOUTON FERMETURE
                     HStack {
-                        Text("Paramètres DCF")
-                            .font(.headline)
-                        
+                        Text("DCF Parameters").font(.headline)
                         Spacer()
-                        
-                        // Bouton pour fermer la sidebar (DÉPLACÉ ICI)
-                        Button(action: {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                isSidebarVisible = false
-                            }
-                        }) {
-                            Image(systemName: "sidebar.left")
-                                .foregroundColor(.primary)
+                        Button(action: { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isSidebarVisible = false } }) {
+                            Image(systemName: "sidebar.left").foregroundColor(.primary)
                         }
-                        .buttonStyle(.plain)
-                        .help("Masquer la barre latérale")
+                        .buttonStyle(.plain).help("Hide sidebar")
                     }
-                    .padding()
-                    .background(Color.blue.opacity(0.1))
+                    .padding().background(Color.blue.opacity(0.1))
                     
-                    // 2. Formulaire
                     Form {
-                        Section(header: Text("Recherche")) {
+                        Section(header: Text("Search")) {
                             HStack {
                                 TextField("Ticker", text: $ticker).onSubmit { fetchPrice() }
-                                Button("Charger") { fetchPrice() }
+                                Button("Load") { fetchPrice() }
                             }
                             HStack {
-                                Text("Prix actuel :")
-                                Spacer()
+                                Text("Current Price:"); Spacer()
                                 if isLoading { ProgressView().scaleEffect(0.5) }
                                 Text(priceDisplay).bold()
                             }
                         }
-                        
-                        Section(header: Text("Fondamentaux"), footer: stockAnalysisLink) {
-                            inputRowString(label: "FCF / Action", value: $fcfInput, helpText: "Free Cash Flow par action")
-                            inputRowString(label: "Nb Actions (B)", value: $sharesInput, helpText: "Nombre total d'actions (Milliards)")
-                            inputRowString(label: "Cash (B)", value: $cashInput, helpText: "Cash total")
-                            inputRowString(label: "Dette (B)", value: $debtInput, helpText: "Dette totale")
+                        Section(header: Text("Fundamentals"), footer: stockAnalysisLink) {
+                            inputRowString(label: "FCF / Share", value: $fcfInput, helpText: "Free Cash Flow per share")
+                            inputRowString(label: "Shares (B)", value: $sharesInput, helpText: "Total shares outstanding (Billions)")
+                            inputRowString(label: "Cash (B)", value: $cashInput, helpText: "Total Cash & Equivalents (Billions)")
+                            inputRowString(label: "Debt (B)", value: $debtInput, helpText: "Total Debt (Billions)")
                         }
-                        
-                        Section(header: Text("Estimations")) {
-                            inputRowDouble(label: "Croissance FCF", value: $growthRate, suffix: "%", helpText: "Croissance annuelle estimée sur 5 ans")
-                            inputRowDouble(label: "Taux Actualisation", value: $discountRate, suffix: "%", helpText: "Votre retour sur investissement souhaité")
-                            inputRowDouble(label: "Multiple Sortie", value: $exitMultiple, suffix: "x", helpText: "PER attendu à la revente dans 5 ans")
+                        Section(header: Text("Estimates")) {
+                            inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
+                            inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in %")
+                            inputRowDouble(label: "Exit Multiple", value: $exitMultiple, suffix: "x", helpText: "Expected P/E ratio in 5 years")
                         }
                     }
                     .formStyle(.grouped)
                   
-                    // 3. Bouton Calculer
                     Divider()
                     Button(action: { calculateIntrinsicValue() }) {
-                        Text("CALCULER")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 5)
+                        Text("CALCULATE").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .padding()
-                    .background(Color(nsColor: .windowBackgroundColor))
+                    .buttonStyle(.borderedProminent).controlSize(.large).padding().background(Color(nsColor: .windowBackgroundColor))
                 }
-                .frame(width: 320) // Largeur fixe pour la sidebar
-                .transition(.move(edge: .leading)) // Animation de glissement
+                .frame(width: 320).transition(.move(edge: .leading))
             }
             
-            // Séparateur visuel (si sidebar ouverte)
-            if isSidebarVisible {
-                Divider()
-            }
+            if isSidebarVisible { Divider() }
             
-            // --- COLONNE DROITE (Résultats) ---
+            // --- RIGHT COLUMN (Results) ---
             ZStack(alignment: .topLeading) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
               
                 ScrollView {
                     VStack(spacing: 30) {
-                       
-                        // Header avec résultats + Badge Marge de sécurité intégré
-                        ResultHeaderView(
-                            priceDisplay: priceDisplay,
-                            intrinsicValue: intrinsicValue,
-                            currentPrice: currentPrice
-                        )
-                        .padding(.top, 40)
-                       
-                        // Bar Chart
-                        if currentPrice > 0 && intrinsicValue > 0 {
-                            ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
-                                .frame(height: 180)
-                                .padding(.horizontal)
+                        // Header Results
+                        ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice)
+                            .padding(.top, 40)
+                        
+                        // --- REVERSE DCF BLOCK ---
+                        if hasCalculated && currentPrice > 0 {
+                            ReverseDCFView(
+                                impliedGrowth: marketImpliedGrowth,
+                                userGrowth: growthRate,
+                                currentPrice: currentPrice
+                            )
+                            .padding(.horizontal)
+                            // Force redraw when data changes
+                            .id("ReverseDCF-\(marketImpliedGrowth)-\(growthRate)")
                         }
                        
-                        // Line Chart Pro
-                        if !projectionData.isEmpty && intrinsicValue > 0 {
+                        // Bar Chart
+                        if hasCalculated && currentPrice > 0 {
+                            ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
+                                .frame(height: 180).padding(.horizontal)
+                        }
+                       
+                        // Line Chart
+                        if !projectionData.isEmpty && hasCalculated {
                             ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice)
                                 .padding(.horizontal)
                         }
                        
-                        // Matrice Heatmap 5x5
-                        if intrinsicValue > 0 {
-                            SensitivityMatrixView(
-                                baseGrowth: growthRate,
-                                baseDiscount: discountRate,
-                                currentPrice: currentPrice,
-                                calculate: runSimulation
-                            )
-                            .padding(.horizontal)
-                            .padding(.bottom, 50)
+                        // Heatmap (7x7)
+                        if hasCalculated {
+                            SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
+                                .padding(.horizontal).padding(.bottom, 50)
                         }
                     }
-                    .frame(maxWidth: .infinity) // Prend toute la largeur dispo
-                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity).padding(.horizontal, 20)
                 }
                 
-                // BOUTON OUVERTURE SIDEBAR (Visible SEULEMENT si sidebar fermée)
                 if !isSidebarVisible {
-                    Button(action: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            isSidebarVisible = true
-                        }
-                    }) {
-                        Image(systemName: "sidebar.right") // Icône pour rouvrir
-                            .font(.title2)
-                            .foregroundColor(.primary)
-                            .padding(10)
-                            .background(.regularMaterial)
-                            .cornerRadius(8)
-                    }
-                    .padding()
-                    .buttonStyle(.plain)
-                    .help("Afficher les paramètres")
+                    Button(action: { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isSidebarVisible = true } }) {
+                        Image(systemName: "sidebar.right").font(.title2).foregroundColor(.primary).padding(10).background(.regularMaterial).cornerRadius(8)
+                    }.padding().buttonStyle(.plain)
                 }
             }
         }
     }
     
-    // --- HELPERS & LOGIQUE ---
+    // --- LOGIC ---
     
     var stockAnalysisLink: some View {
         let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines)
         let urlString = cleanTicker.isEmpty ? "https://stockanalysis.com" : "https://stockanalysis.com/stocks/\(cleanTicker)/financials/"
         return Link(destination: URL(string: urlString)!) {
-            HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("Données StockAnalysis") }.font(.caption).padding(.top, 5)
+            HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("StockAnalysis Data") }.font(.caption).padding(.top, 5)
         }
     }
 
@@ -224,6 +185,13 @@ struct ContentView: View {
             fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput),
             g: growthRate, r: discountRate, method: selectedMethod, tg: terminalGrowth, exitMult: exitMultiple
         )
+        
+        // Calculate Reverse DCF
+        if currentPrice > 0 {
+            let impliedG = solveReverseDCF(targetPrice: currentPrice)
+            self.marketImpliedGrowth = impliedG
+        }
+        
         var newProjections: [ProjectionPoint] = []
         var projectedValue = result
         newProjections.append(ProjectionPoint(year: 0, value: result))
@@ -231,10 +199,39 @@ struct ContentView: View {
             projectedValue = projectedValue * (1 + (growthRate / 100.0))
             newProjections.append(ProjectionPoint(year: i, value: projectedValue))
         }
+        
+        // Update states within animation
         withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
             self.intrinsicValue = result
             self.projectionData = newProjections
+            self.hasCalculated = true
         }
+    }
+    
+    // Binary Search for Implied Growth
+    func solveReverseDCF(targetPrice: Double) -> Double {
+        var low = -0.50 // -50%
+        var high = 1.00 // +100%
+        var iterations = 0
+        
+        while iterations < 100 {
+            let mid = (low + high) / 2.0
+            let val = computeDCF(
+                fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput),
+                g: mid * 100.0,
+                r: discountRate, method: selectedMethod, tg: terminalGrowth, exitMult: exitMultiple
+            )
+            
+            if abs(val - targetPrice) < 0.1 { return mid * 100.0 }
+            
+            if val < targetPrice {
+                low = mid
+            } else {
+                high = mid
+            }
+            iterations += 1
+        }
+        return (low + high) / 2.0 * 100.0
     }
     
     func runSimulation(g: Double, r: Double) -> Double {
@@ -269,18 +266,13 @@ struct ContentView: View {
         }.resume()
     }
     
-    // --- HELPERS UI : CORRECTION LARGEUR TEXTFIELD ---
-    
+    // --- UI ELEMENTS ---
     func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View {
         HStack {
             Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8)
             InfoButton(helpText: helpText)
             Spacer()
-            // LARGEUR AUGMENTÉE DE 80 à 100
-            TextField("0", text: value)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 100)
-                .multilineTextAlignment(.trailing)
+            TextField("0", text: value).textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing)
         }
     }
     
@@ -290,163 +282,156 @@ struct ContentView: View {
             InfoButton(helpText: helpText)
             Spacer()
             HStack(spacing: 2) {
-                // LARGEUR AUGMENTÉE DE 60 à 80
-                TextField("", value: value, format: .number)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                    .multilineTextAlignment(.trailing)
+                TextField("", value: value, format: .number).textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing)
                 Text(suffix).font(.caption).foregroundColor(.secondary)
             }
         }
     }
 }
 
-// --- BOUTON INFO ---
 struct InfoButton: View {
     let helpText: String
     @State private var showPopover = false
     var body: some View {
         Button(action: { showPopover.toggle() }) { Image(systemName: "info.circle").foregroundColor(.secondary) }
-        .buttonStyle(.plain)
-        .popover(isPresented: $showPopover) { Text(helpText).padding().frame(width: 250).multilineTextAlignment(.leading) }
+        .buttonStyle(.plain).popover(isPresented: $showPopover) { Text(helpText).padding().frame(width: 250).multilineTextAlignment(.leading) }
     }
 }
 
-
-// --- 1. HEADER IMPROVED (Avec Badge intégré) ---
-
-struct ResultHeaderView: View {
-    var priceDisplay: String
-    var intrinsicValue: Double
+// --- 1. REVERSE DCF VIEW (CORRECTED LOGIC) ---
+struct ReverseDCFView: View {
+    var impliedGrowth: Double
+    var userGrowth: Double
     var currentPrice: Double
     
+    // LOGIC FIX:
+    // If Market Implied Growth (17%) > User Growth (15%) -> Market is Optimistic -> Price is High -> RISKY for you.
+    var isRisky: Bool { impliedGrowth > userGrowth }
+    
     var body: some View {
-        VStack(spacing: 15) {
-            // Ligne des Prix
-            HStack(spacing: 50) {
-                VStack {
-                    Text("Prix Actuel").font(.headline).foregroundColor(.secondary)
-                    Text(priceDisplay).font(.system(size: 36, weight: .bold))
-                }
+        HStack(spacing: 20) {
+            Image(systemName: isRisky ? "exclamationmark.triangle.fill" : "hand.thumbsup.fill")
+                .font(.largeTitle)
+                .foregroundColor(isRisky ? .orange : .green)
+                .frame(width: 50)
+            
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Reverse DCF (Market Expectations)")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
                 
-                Image(systemName: "arrow.right").font(.largeTitle).opacity(0.3)
+                Text("To justify the price of \(String(format: "%.2f", currentPrice)), the market expects a growth of:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 
-                VStack {
-                    Text("Valeur Intrinsèque").font(.headline).foregroundColor(.secondary)
-                    Text(String(format: "%.2f $", intrinsicValue))
-                        .font(.system(size: 36, weight: .bold))
-                        .foregroundColor(intrinsicValue > currentPrice ? .green : .red)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(String(format: "%.1f%%", impliedGrowth))
+                        .font(.title2).bold()
+                        .foregroundColor(isRisky ? .orange : .primary)
+                    
+                    Text("per year")
+                        .font(.caption).bold().foregroundColor(.secondary)
+                    
+                    // TEXT FIX:
+                    Text(isRisky ? "(Higher than your \(String(format: "%.1f", userGrowth))%)" : "(Lower than your \(String(format: "%.1f", userGrowth))%)")
+                        .font(.caption)
+                        .foregroundColor(isRisky ? .red : .green)
+                        .padding(.leading, 5)
                 }
             }
-            
-            // Badge "Sous-évalué / Surévalué" intégré proprement
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
+    }
+}
+
+struct ResultHeaderView: View {
+    var priceDisplay: String; var intrinsicValue: Double; var currentPrice: Double
+    var body: some View {
+        VStack(spacing: 15) {
+            HStack(spacing: 50) {
+                VStack { Text("Current Price").font(.headline).foregroundColor(.secondary); Text(priceDisplay).font(.system(size: 36, weight: .bold)) }
+                Image(systemName: "arrow.right").font(.largeTitle).opacity(0.3)
+                VStack { Text("Intrinsic Value").font(.headline).foregroundColor(.secondary); Text(String(format: "%.2f $", intrinsicValue)).font(.system(size: 36, weight: .bold)).foregroundColor(intrinsicValue > currentPrice ? .green : .red) }
+            }
             if currentPrice > 0 && intrinsicValue > 0 {
                 let margin = ((intrinsicValue - currentPrice) / intrinsicValue) * 100
                 HStack(spacing: 8) {
                     Image(systemName: margin > 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    Text(margin > 0 ? "Sous-évalué de" : "Surévalué de")
-                        .fontWeight(.bold)
-                        .textCase(.uppercase)
-                    Text(String(format: "%.1f %%", abs(margin)))
-                        .fontWeight(.black)
+                    Text(margin > 0 ? "Undervalued by" : "Overvalued by").fontWeight(.bold).textCase(.uppercase)
+                    Text(String(format: "%.1f %%", abs(margin))).fontWeight(.black)
                 }
-                .font(.callout)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(margin > 0 ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-                .foregroundColor(margin > 0 ? .green : .red)
-                .cornerRadius(20) // Forme de pilule
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(margin > 0 ? Color.green.opacity(0.3) : Color.red.opacity(0.3), lineWidth: 1)
-                )
+                .font(.callout).padding(.horizontal, 16).padding(.vertical, 8)
+                .background(margin > 0 ? Color.green.opacity(0.15) : Color.red.opacity(0.15)).foregroundColor(margin > 0 ? .green : .red).cornerRadius(20)
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(margin > 0 ? Color.green.opacity(0.3) : Color.red.opacity(0.3), lineWidth: 1))
             }
         }
     }
 }
 
-// --- 2. MATRICE HEATMAP 5x5 ---
+// --- 2. SENSITIVITY MATRIX 7x7 (UPDATED) ---
 
 struct SensitivityMatrixView: View {
-    let baseGrowth: Double
-    let baseDiscount: Double
-    let currentPrice: Double
-    let calculate: (Double, Double) -> Double
+    let baseGrowth: Double; let baseDiscount: Double; let currentPrice: Double; let calculate: (Double, Double) -> Double
     
-    // 5 Étapes : -2%, -1%, Base, +1%, +2%
-    var growthSteps: [Double] { [baseGrowth - 3, baseGrowth - 2, baseGrowth - 1, baseGrowth, baseGrowth + 1, baseGrowth + 2, baseGrowth + 3] }
-    var discountSteps: [Double] { [baseDiscount - 3, baseDiscount - 2, baseDiscount - 1, baseDiscount, baseDiscount + 1, baseDiscount + 2, baseDiscount + 3] }
+    // 7 Steps: -3 to +3
+    var growthSteps: [Double] {
+        [baseGrowth - 3, baseGrowth - 2, baseGrowth - 1, baseGrowth, baseGrowth + 1, baseGrowth + 2, baseGrowth + 3]
+    }
+    var discountSteps: [Double] {
+        [baseDiscount - 3, baseDiscount - 2, baseDiscount - 1, baseDiscount, baseDiscount + 1, baseDiscount + 2, baseDiscount + 3]
+    }
     
-    // Fonction pour générer la couleur (Heatmap)
     func getColor(value: Double) -> Color {
         guard currentPrice > 0 else { return .gray.opacity(0.1) }
         let diff = (value - currentPrice) / currentPrice
-        
-        if diff > 0 {
-            // Vert : Plus c'est haut, plus c'est foncé (max à +40%)
-            let intensity = min(diff * 2.5, 0.6) + 0.05
-            return Color.green.opacity(intensity)
-        } else {
-            // Rouge : Plus c'est bas, plus c'est foncé
-            let intensity = min(abs(diff) * 2.5, 0.6) + 0.05
-            return Color.red.opacity(intensity)
-        }
+        if diff > 0 { return Color.green.opacity(min(diff * 2.5, 0.6) + 0.05) }
+        else { return Color.red.opacity(min(abs(diff) * 2.5, 0.6) + 0.05) }
     }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            Text("Matrice de Sensibilité (Heatmap)")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            
-            Grid(horizontalSpacing: 5, verticalSpacing: 5) {
-                // En-tête Colonnes (Croissance)
+            Text("Sensitivity Matrix (7x7 Heatmap)").font(.headline).foregroundColor(.secondary)
+            Grid(horizontalSpacing: 4, verticalSpacing: 4) {
+                // Header Row
                 GridRow {
-                    Text("Taux Act. \\ Croiss.")
-                        .font(.caption2).foregroundColor(.secondary).frame(width: 80, alignment: .leading)
+                    Text("Disc. \\ Grwth").font(.caption2).foregroundColor(.secondary).frame(width: 70, alignment: .leading)
                     ForEach(growthSteps, id: \.self) { g in
-                        Text("\(String(format: "%.1f", g))%")
-                            .font(.caption).bold()
+                        Text("\(String(format: "%.0f", g))%")
+                            .font(.caption2).bold()
                             .foregroundColor(g == baseGrowth ? .blue : .primary)
                     }
                 }
-                
-                // Lignes (Taux d'actualisation)
+                // Data Rows
                 ForEach(discountSteps, id: \.self) { r in
                     GridRow {
                         Text("\(String(format: "%.1f", r))%")
-                            .font(.caption).bold()
+                            .font(.caption2).bold()
                             .foregroundColor(r == baseDiscount ? .blue : .primary)
-                            .frame(width: 80, alignment: .leading)
+                            .frame(width: 70, alignment: .leading)
                         
                         ForEach(growthSteps, id: \.self) { g in
                             let val = calculate(g, r)
-                            
                             Text(String(format: "%.0f", val))
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.primary) // Texte toujours lisible
-                                .frame(maxWidth: .infinity, minHeight: 35)
-                                .background(getColor(value: val)) // Couleur de fond dynamique
-                                .cornerRadius(6)
+                                .font(.system(size: 11, weight: .medium)) // Smaller font for 7x7
+                                .foregroundColor(.primary)
+                                .frame(maxWidth: .infinity, minHeight: 30)
+                                .background(getColor(value: val))
+                                .cornerRadius(4)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .stroke(
-                                            (r == baseDiscount && g == baseGrowth) ? Color.blue : Color.clear,
-                                            lineWidth: 2
-                                        )
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke((r == baseDiscount && g == baseGrowth) ? Color.blue : Color.clear, lineWidth: 2)
                                 )
                         }
                     }
                 }
             }
-        }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(12)
+        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
     }
 }
-
-// --- AUTRES CHARTS ---
 
 struct ValuationBarChart: View {
     var marketPrice: Double; var intrinsicValue: Double
@@ -454,8 +439,8 @@ struct ValuationBarChart: View {
     var body: some View {
         GeometryReader { g in
             HStack(alignment: .bottom, spacing: 60) {
-                BarView(value: marketPrice, maxValue: maxValue, label: "Marché", color: .gray.opacity(0.4), height: g.size.height)
-                BarView(value: intrinsicValue, maxValue: maxValue, label: "Valeur", color: intrinsicValue >= marketPrice ? .green : .red, height: g.size.height)
+                BarView(value: marketPrice, maxValue: maxValue, label: "Market", color: .gray.opacity(0.4), height: g.size.height)
+                BarView(value: intrinsicValue, maxValue: maxValue, label: "Value", color: intrinsicValue >= marketPrice ? .green : .red, height: g.size.height)
             }
         }
     }
@@ -465,8 +450,7 @@ struct BarView: View {
     var body: some View {
         VStack {
             Text("\(Int(value)) $").font(.headline).foregroundColor(.secondary)
-            RoundedRectangle(cornerRadius: 8).fill(color.gradient).frame(height: maxValue > 0 ? height * (value / maxValue) : 0)
-                .animation(.spring, value: value)
+            RoundedRectangle(cornerRadius: 8).fill(color.gradient).frame(height: maxValue > 0 ? height * (value / maxValue) : 0).animation(.spring, value: value)
             Text(label).font(.subheadline).fontWeight(.bold).foregroundColor(.secondary)
         }.frame(maxWidth: .infinity)
     }
@@ -482,26 +466,26 @@ struct ProjectedGrowthChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("Projection Valeur vs Prix").font(.headline).foregroundColor(.secondary)
+                Text("Value Projection vs Price").font(.headline).foregroundColor(.secondary)
                 HStack(spacing: 15) {
-                    HStack(spacing: 5) { Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption); Text("Valeur Intrinsèque").font(.caption).bold() }
-                    HStack(spacing: 5) { Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption); Text("Prix Actuel").font(.caption).bold() }
+                    HStack(spacing: 5) { Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption); Text("Intrinsic Value").font(.caption).bold() }
+                    HStack(spacing: 5) { Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption); Text("Current Price").font(.caption).bold() }
                 }
             }
             Chart {
-                RuleMark(y: .value("Prix", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
-                    .annotation(position: .top, alignment: .leading) { Text("Prix: \(Int(currentPrice))$").font(.caption2).foregroundColor(.red) }
+                RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
+                    .annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))$").font(.caption2).foregroundColor(.red) }
                 ForEach(data) { point in
-                    LineMark(x: .value("Année", point.year), y: .value("Valeur", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone)
-                    PointMark(x: .value("Année", point.year), y: .value("Valeur", point.value)).foregroundStyle(.blue).symbolSize(60)
+                    LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone)
+                    PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60)
                 }
                 if let selectedYear {
-                    RuleMark(x: .value("Année", selectedYear)).foregroundStyle(Color.gray.opacity(0.3))
+                    RuleMark(x: .value("Year", selectedYear)).foregroundStyle(Color.gray.opacity(0.3))
                         .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
                             if let point = data.first(where: { $0.year == selectedYear }) {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Année \(point.year)").font(.caption).bold().foregroundColor(.secondary)
-                                    Text("Valeur: \(Int(point.value)) $").font(.caption).bold().foregroundColor(.blue)
+                                    Text("Year \(point.year)").font(.caption).bold().foregroundColor(.secondary)
+                                    Text("Value: \(Int(point.value)) $").font(.caption).bold().foregroundColor(.blue)
                                 }.padding(6).background(.regularMaterial).cornerRadius(6).shadow(radius: 2)
                             }
                         }
