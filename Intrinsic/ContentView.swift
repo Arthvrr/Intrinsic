@@ -109,19 +109,19 @@ struct ContentView: View {
                                 Text(priceDisplay).bold()
                             }
                         }
-                        
+                       
                         Section(header: Text("Fundamentals"), footer: stockAnalysisLink) {
                             inputRowString(label: "FCF / Share", value: $fcfInput, helpText: "Free Cash Flow per share")
                             inputRowString(label: "Shares (B)", value: $sharesInput, helpText: "Total shares outstanding (Billions)")
                             inputRowString(label: "Cash (B)", value: $cashInput, helpText: "Total Cash & Equivalents (Billions)")
                             inputRowString(label: "Debt (B)", value: $debtInput, helpText: "Total Debt (Billions)")
                         }
-                        
+                       
                         Section(header: Text("P/E Ratios (Context)"), footer: guruFocusLink) {
                             inputRowString(label: "Current P/E", value: $currentPEInput, helpText: "Enter the current P/E manually")
                             inputRowString(label: "Historical P/E", value: $historicalPEInput, helpText: "Enter the 5-10y average P/E manually")
                         }
-                        
+                       
                         Section(header: Text("Estimates")) {
                             inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
                             inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in %")
@@ -129,7 +129,7 @@ struct ContentView: View {
                         }
                     }
                     .formStyle(.grouped)
-                
+              
                     Divider()
                     Button(action: { calculateIntrinsicValue() }) {
                         Text("CALCULATE").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
@@ -149,27 +149,27 @@ struct ContentView: View {
                     VStack(spacing: 30) {
                         ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
                             .padding(.top, 40)
-                        
+                       
                         if hasCalculated && currentPrice > 0 {
                             ReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.horizontal)
                         }
-                        
+                       
                         if hasCalculated && currentPrice > 0 {
                             ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
                                 .frame(height: 180).padding(.horizontal)
                         }
-                        
+                       
                         if !projectionData.isEmpty && hasCalculated {
                             ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.horizontal)
                         }
-                        
+                       
                         if hasCalculated {
                             SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
                                 .padding(.horizontal)
                         }
-                        
+                       
                         if hasCalculated {
                             FinancialHealthView(
                                 cash: parseDouble(cashInput),
@@ -180,7 +180,7 @@ struct ContentView: View {
                             )
                             .padding(.horizontal)
                         }
-                        
+                       
                         if hasCalculated {
                             PEComparisonChart(
                                 currentPE: parseDouble(currentPEInput),
@@ -188,7 +188,7 @@ struct ContentView: View {
                                 exitMultiple: exitMultiple
                             )
                             .padding(.horizontal)
-                            
+                           
                             if parseDouble(currentPEInput) > 0 && growthRate > 0 {
                                 PEGRatioGauge(
                                     currentPE: parseDouble(currentPEInput),
@@ -196,8 +196,17 @@ struct ContentView: View {
                                 )
                                 .padding(.horizontal)
                             }
+                            
+                            // --- AJOUT : JAUGE FCF YIELD ---
+                            if parseDouble(fcfInput) > 0 && currentPrice > 0 {
+                                FCFYieldGauge(
+                                    fcfPerShare: parseDouble(fcfInput),
+                                    currentPrice: currentPrice
+                                )
+                                .padding(.horizontal)
+                            }
                         }
-                        
+                       
                         if hasCalculated && intrinsicValue > 0 {
                             BuyBoxView(
                                 intrinsicValue: intrinsicValue,
@@ -213,7 +222,7 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity).padding(.horizontal, 20)
                 }
-                
+              
                 if !isSidebarVisible {
                     Button(action: { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isSidebarVisible = true } }) {
                         Image(systemName: "sidebar.right").font(.title2).foregroundColor(.primary).padding(10).background(.regularMaterial).cornerRadius(8)
@@ -252,7 +261,7 @@ struct ContentView: View {
             g: growthRate, r: discountRate, method: selectedMethod, tg: terminalGrowth, exitMult: exitMultiple
         )
         if currentPrice > 0 { self.marketImpliedGrowth = solveReverseDCF(targetPrice: currentPrice) }
-        
+       
         var newProjections: [ProjectionPoint] = []
         var projectedValue = result
         newProjections.append(ProjectionPoint(year: 0, value: result))
@@ -260,7 +269,7 @@ struct ContentView: View {
             projectedValue = projectedValue * (1 + (growthRate / 100.0))
             newProjections.append(ProjectionPoint(year: i, value: projectedValue))
         }
-        
+       
         withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
             self.intrinsicValue = result
             self.projectionData = newProjections
@@ -307,7 +316,7 @@ struct ContentView: View {
                 let p = res.meta.regularMarketPrice ?? res.meta.previousClose ?? 0.0
                 let currencyCode = res.meta.currency ?? "USD"
                 let sym = getCurrencySymbol(code: currencyCode)
-                
+              
                 DispatchQueue.main.async {
                     self.currentPrice = p
                     self.currencySymbol = sym
@@ -359,11 +368,11 @@ struct FinancialHealthView: View {
                 Text("Risk & Growth Check").font(.headline).foregroundColor(.secondary)
                 Spacer()
             }
-            
+           
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Balance Sheet").font(.caption).bold().foregroundColor(.secondary)
-                    
+                   
                     if cash == 0 && debt == 0 {
                         Text("Enter Cash & Debt").font(.caption).italic().foregroundColor(.secondary)
                     } else {
@@ -375,7 +384,7 @@ struct FinancialHealthView: View {
                                     .frame(width: 30, height: 60 * (cash / max(cash, debt, 1.0)))
                                 Text("Cash").font(.tiny).bold()
                             }
-                            
+                           
                             VStack {
                                 Text(String(format: "%.1fB", debt)).font(.caption2)
                                 RoundedRectangle(cornerRadius: 6)
@@ -384,7 +393,7 @@ struct FinancialHealthView: View {
                                 Text("Debt").font(.tiny).bold()
                             }
                         }.frame(height: 80)
-                        
+                       
                         Text(netCash >= 0 ? "Net Cash (Safe)" : "Net Debt (Leveraged)")
                             .font(.tiny).bold()
                             .foregroundColor(netCash >= 0 ? .green : .red)
@@ -396,10 +405,10 @@ struct FinancialHealthView: View {
                 .background(Color(nsColor: .controlBackgroundColor))
                 .cornerRadius(10)
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
-                
+              
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Proj. FCF Growth (5Y)").font(.caption).bold().foregroundColor(.secondary)
-                    
+                   
                     if fcfPerShare > 0 {
                         HStack(alignment: .bottom, spacing: 8) {
                             let data = fcfProjections
@@ -416,7 +425,7 @@ struct FinancialHealthView: View {
                                 }
                             }
                         }.frame(height: 80)
-                        
+                       
                         Text("CAGR: \(String(format: "%.1f", growthRate))%")
                             .font(.tiny).bold()
                             .foregroundColor(growthRate > 0 ? .green : .red)
@@ -495,6 +504,7 @@ struct ReverseDCFView: View {
                     Text(isRisky ? "(Higher than your \(String(format: "%.1f", userGrowth))%)" : "(Lower than your \(String(format: "%.1f", userGrowth))%)").font(.caption).foregroundColor(isRisky ? .red : .green).padding(.leading, 5)
                 }
             }
+            Spacer()
         }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
     }
 }
@@ -600,6 +610,84 @@ struct PEGRatioGauge: View {
             }.frame(height: 50)
             HStack { Text("0.0").font(.tiny); Spacer(); Text("1.0 (Cheap)").font(.tiny).padding(.trailing, 40); Spacer(); Text("3.0+").font(.tiny) }.foregroundColor(.gray)
         }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+    }
+}
+
+// --- AJOUT : NOUVELLE STRUCT POUR FCF YIELD ---
+struct FCFYieldGauge: View {
+    var fcfPerShare: Double
+    var currentPrice: Double
+    
+    var yield: Double {
+        guard currentPrice > 0 else { return 0.0 }
+        return (fcfPerShare / currentPrice) * 100.0
+    }
+    
+    // On plafonne visuellement à 10% (mais on affiche la vraie valeur)
+    var yieldProgress: CGFloat {
+        let clamped = min(max(yield, 0.0), 10.0)
+        return CGFloat(clamped / 10.0)
+    }
+    
+    // Logique inverse du PEG : Haut = Bien (Vert), Bas = Attention (Rouge)
+    var statusText: String {
+        if yield < 3.0 { return "Expensive (<3%)" }
+        else if yield < 7.0 { return "Fair (3-7%)" }
+        else { return "Attractive (>7%)" }
+    }
+    
+    var statusColor: Color {
+        if yield < 3.0 { return .red }
+        else if yield < 7.0 { return .yellow }
+        else { return .green }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "banknote.fill").font(.title2).foregroundColor(.green)
+                Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor)
+            }
+            
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Dégradé : Rouge (0%) -> Jaune (3-7%) -> Vert (10%+)
+                    Rectangle().fill(LinearGradient(stops: [
+                        .init(color: .red.opacity(0.8), location: 0.0),
+                        .init(color: .red.opacity(0.8), location: 0.3),
+                        .init(color: .yellow, location: 0.3),
+                        .init(color: .yellow, location: 0.7),
+                        .init(color: .green.opacity(0.8), location: 0.7),
+                        .init(color: .green.opacity(0.8), location: 1.0)
+                    ], startPoint: .leading, endPoint: .trailing))
+                    .frame(height: 20).cornerRadius(10)
+                    
+                    Image(systemName: "arrowtriangle.down.fill")
+                        .foregroundColor(.primary)
+                        .font(.title3)
+                        .offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: -20)
+                    
+                    Text(statusText)
+                        .font(.caption2).bold().foregroundColor(statusColor)
+                        .offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: 22)
+                        .fixedSize()
+                }
+            }.frame(height: 50)
+            
+            HStack {
+                Text("0%").font(.tiny)
+                Spacer()
+                Text("5% (Avg)").font(.tiny)
+                Spacer()
+                Text("10%+").font(.tiny)
+            }.foregroundColor(.gray)
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 

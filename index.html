@@ -5,12 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Intrinsic - The Professional Stock Valuation Tool</title>
     <link rel="icon" type="image/x-icon" href="App Icon/AppIcons/icon-big.ico">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
         :root {
             --bg-color: #0a0a0c;
             --text-main: #ffffff;
             --text-muted: #a1a1aa;
             --accent: #3b82f6;
+            --accent-green: #22c55e;
             --accent-glow: rgba(59, 130, 246, 0.5);
             --card-bg: #18181b;
             --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -90,32 +93,69 @@
             box-shadow: none;
         }
 
-        /* --- APP SHOWCASE --- */
+        /* --- CAROUSEL (NEW CSS) --- */
         .app-preview {
             margin-top: 4rem;
             position: relative;
             border-radius: 12px;
             box-shadow: 0 20px 50px -10px rgba(0,0,0,0.5);
             border: 1px solid #333;
-            overflow: hidden;
+            overflow: hidden; /* Important pour masquer les images qui dépassent */
             background: #1c1c1e;
-            aspect-ratio: 16/10; /* Mac screen ratio */
+            max-width: 1000px; 
+            margin-left: auto;
+            margin-right: auto;
+            aspect-ratio: 16/10; /* Garde le ratio Mac */
+        }
+
+        .carousel-track {
+            display: flex;
+            transition: transform 0.5s ease-in-out; /* Animation fluide */
+            height: 100%;
+        }
+
+        .carousel-slide {
+            min-width: 100%;
+            height: 100%;
+        }
+
+        .carousel-slide img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Remplit bien le cadre */
+            display: block;
+        }
+
+        /* Flèches de navigation */
+        .carousel-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            padding: 1rem;
+            cursor: pointer;
+            z-index: 10;
+            font-size: 1.2rem;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: background 0.3s;
         }
 
-        .app-preview img {
-            width: 100%;
-            height: auto;
-            display: block;
-        }
+        .carousel-btn:hover { background: rgba(59, 130, 246, 0.8); }
+        .carousel-btn.prev { left: 20px; }
+        .carousel-btn.next { right: 20px; }
 
         /* --- FEATURES --- */
         .features { padding: 6rem 0; }
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 2rem;
             margin-top: 3rem;
         }
@@ -124,9 +164,9 @@
             padding: 2rem;
             border-radius: 16px;
             border: 1px solid #27272a;
-            transition: border-color 0.3s;
+            transition: all 0.3s ease;
         }
-        .card:hover { border-color: var(--accent); }
+        .card:hover { border-color: var(--accent); transform: translateY(-5px); }
         .icon {
             width: 48px;
             height: 48px;
@@ -139,8 +179,10 @@
             margin-bottom: 1.5rem;
             font-size: 1.5rem;
         }
+        .card.green-accent:hover { border-color: var(--accent-green); }
+        .card.green-accent .icon { color: var(--accent-green); background: rgba(34, 197, 94, 0.1); }
         .card h3 { font-size: 1.25rem; margin-bottom: 0.5rem; color: var(--text-main); }
-        .card p { margin: 0; font-size: 1rem; max-width: 100%; }
+        .card p { margin: 0; font-size: 1rem; max-width: 100%; color: var(--text-muted); }
 
         /* --- FOOTER --- */
         footer {
@@ -156,9 +198,9 @@
         @media (max-width: 768px) {
             h1 { font-size: 2.5rem; }
             .hero { padding: 4rem 0; }
+            .carousel-btn { width: 35px; height: 35px; font-size: 1rem; padding: 0.5rem; }
         }
     </style>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
 
@@ -173,36 +215,55 @@
         <section class="hero">
             <h1>Invest with institutional<br>precision.</h1>
             <p>
-                Stop guessing. Leverage the power of DCF (Discounted Cash Flow), 
-                Reverse DCF, and ratio analysis to uncover the true value of any stock.
+                Stop guessing. Leverage the power of Automated DCF, 
+                Reverse DCF, and Lynch Ratios to uncover the true value of any stock.
             </p>
             <div>
-                <a href="#" class="btn">Download for Mac</a>
+                <a href="#" class="btn"><i class="fa-brands fa-apple"></i> Download for Mac</a>
                 <a href="#features" class="btn btn-secondary">Learn More</a>
             </div>
 
             <div class="app-preview">
-                <img src="app-screen.png" alt="Intrinsic App Interface" onerror="this.style.display='none'; this.parentNode.innerHTML='<h3 style=\'color:#555\'>Place app-screen.png here</h3>'">
+                <button class="carousel-btn prev" id="prevBtn"><i class="fa-solid fa-chevron-left"></i></button>
+                <button class="carousel-btn next" id="nextBtn"><i class="fa-solid fa-chevron-right"></i></button>
+                
+                <div class="carousel-track" id="track">
+                    <div class="carousel-slide">
+                        <img src="screen1.png" alt="Intrinsic DCF View">
+                    </div>
+                    <div class="carousel-slide">
+                        <img src="screen2.png" alt="Intrinsic Reverse DCF">
+                    </div>
+                    <div class="carousel-slide">
+                        <img src="screen3.png" alt="Intrinsic Sensitivity Matrix">
+                    </div>
+                </div>
             </div>
-        </section>
+            </section>
 
         <section id="features" class="features">
             <div style="text-align: center;">
-                <h2>Why Intrinsic?</h2>
-                <p>A financial suite designed for Value Investors.</p>
+                <h2>A complete valuation suite.</h2>
+                <p>Everything you need to determine the buy price, in one view.</p>
             </div>
             
             <div class="grid">
                 <div class="card">
-                    <div class="icon"><i class="fa-solid fa-chart-line"></i></div>
+                    <div class="icon"><i class="fa-solid fa-calculator"></i></div>
                     <h3>Automated DCF</h3>
-                    <p>Calculate intrinsic value in seconds. 5-year projections based on actual Free Cash Flow.</p>
+                    <p>Instant intrinsic value calculation. 5-year projections based on FCF, fully customizable assumptions.</p>
                 </div>
 
                 <div class="card">
-                    <div class="icon"><i class="fa-solid fa-magnifying-glass-dollar"></i></div>
+                    <div class="icon"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
                     <h3>Reverse DCF</h3>
-                    <p>Is the market crazy? Discover what growth rate is implicitly expected by the current stock price.</p>
+                    <p>Reality check. See exactly what growth rate the market price implies, and compare it to yours.</p>
+                </div>
+
+                <div class="card">
+                    <div class="icon"><i class="fa-solid fa-sliders"></i></div>
+                    <h3>Dynamic Entry Planner</h3>
+                    <p>Set your desired <strong>Margin of Safety</strong> via a slider. The app tells you the exact price to wait for.</p>
                 </div>
 
                 <div class="card">
@@ -212,30 +273,104 @@
                 </div>
 
                 <div class="card">
+                    <div class="icon"><i class="fa-solid fa-money-bill-trend-up"></i></div>
+                    <h3>FCF Yield Gauge</h3>
+                    <p>The "Market Payback". Instantly see how much free cash flow the company generates relative to its price.</p>
+                </div>
+
+                <div class="card">
+                    <div class="icon"><i class="fa-solid fa-scale-balanced"></i></div>
+                    <h3>PEG Ratio (Lynch)</h3>
+                    <p>Growth-adjusted valuation. Determine if a high P/E is justified by the company's growth rate.</p>
+                </div>
+
+                <div class="card">
                     <div class="icon"><i class="fa-solid fa-table-cells"></i></div>
                     <h3>Sensitivity Matrix</h3>
-                    <p>Visualize the impact of your assumptions (Rate & Growth) via an interactive 7x7 Heatmap.</p>
+                    <p>7x7 Heatmap. Visualize how changes in discount rates and growth estimates impact fair value.</p>
+                </div>
+
+                <div class="card">
+                    <div class="icon"><i class="fa-solid fa-heart-pulse"></i></div>
+                    <h3>Risk Assessment</h3>
+                    <p>Visual Balance Sheet check. Net Cash vs. Debt analysis to ensure the company is solvent.</p>
                 </div>
 
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-globe"></i></div>
                     <h3>Multi-Currency</h3>
-                    <p>Native support for international stocks. Enter a ticker, the app handles the currency (€, $, £, etc.).</p>
-                </div>
-
-                <div class="card">
-                    <div class="icon"><i class="fa-solid fa-shield"></i></div>
-                    <h3>Margin of Safety</h3>
-                    <p>Instantly know if a stock is undervalued and by how much. Never buy without a margin.</p>
+                    <p>Native support for international stocks. Ticker input automatically detects currency (€, $, £, ¥).</p>
                 </div>
             </div>
         </section>
 
         <footer>
-            <p>&copy; 2026 Intrinsic App. All rights reserved.</p>
+            <p>&copy; 2026 Intrinsic App. Built for Value Investors.</p>
             <p style="font-size: 0.8rem; margin-top: 10px; color: #444;">Financial data provided for informational purposes only. Invest responsibly.</p>
         </footer>
     </div>
+
+    <script>
+        const track = document.getElementById('track');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const slides = document.querySelectorAll('.carousel-slide');
+        
+        let currentIndex = 0;
+        const totalSlides = slides.length;
+        const intervalTime = 5000; // 5000ms = 5 secondes
+        let slideInterval;
+
+        // Fonction pour changer de slide
+        function updateCarousel() {
+            const width = track.clientWidth;
+            track.style.transform = `translateX(-${currentIndex * 100}%)`;
+        }
+
+        function nextSlide() {
+            currentIndex++;
+            if (currentIndex >= totalSlides) {
+                currentIndex = 0;
+            }
+            updateCarousel();
+        }
+
+        function prevSlide() {
+            currentIndex--;
+            if (currentIndex < 0) {
+                currentIndex = totalSlides - 1;
+            }
+            updateCarousel();
+        }
+
+        // Lancer le timer automatique
+        function startSlideTimer() {
+            slideInterval = setInterval(nextSlide, intervalTime);
+        }
+
+        // Arrêter le timer (quand on clique manuellement)
+        function resetSlideTimer() {
+            clearInterval(slideInterval);
+            startSlideTimer();
+        }
+
+        // Événements boutons
+        nextBtn.addEventListener('click', () => {
+            nextSlide();
+            resetSlideTimer();
+        });
+
+        prevBtn.addEventListener('click', () => {
+            prevSlide();
+            resetSlideTimer();
+        });
+
+        // Gérer le redimensionnement de la fenêtre
+        window.addEventListener('resize', updateCarousel);
+
+        // Démarrer au chargement
+        startSlideTimer();
+    </script>
 
 </body>
 </html>
