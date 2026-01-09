@@ -14,6 +14,7 @@
             --text-muted: #a1a1aa;
             --accent: #3b82f6;
             --accent-green: #22c55e;
+            --accent-red: #ef4444;
             --accent-glow: rgba(59, 130, 246, 0.5);
             --card-bg: #18181b;
             --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -93,40 +94,30 @@
             box-shadow: none;
         }
 
-        /* --- CAROUSEL (NEW CSS) --- */
+        /* --- CAROUSEL --- */
         .app-preview {
             margin-top: 4rem;
             position: relative;
             border-radius: 12px;
             box-shadow: 0 20px 50px -10px rgba(0,0,0,0.5);
             border: 1px solid #333;
-            overflow: hidden; /* Important pour masquer les images qui dépassent */
+            overflow: hidden;
             background: #1c1c1e;
             max-width: 1000px; 
             margin-left: auto;
             margin-right: auto;
-            aspect-ratio: 16/10; /* Garde le ratio Mac */
+            aspect-ratio: 16/10;
         }
 
         .carousel-track {
             display: flex;
-            transition: transform 0.5s ease-in-out; /* Animation fluide */
+            transition: transform 0.5s ease-in-out;
             height: 100%;
         }
 
-        .carousel-slide {
-            min-width: 100%;
-            height: 100%;
-        }
+        .carousel-slide { min-width: 100%; height: 100%; }
+        .carousel-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-        .carousel-slide img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover; /* Remplit bien le cadre */
-            display: block;
-        }
-
-        /* Flèches de navigation */
         .carousel-btn {
             position: absolute;
             top: 50%;
@@ -146,7 +137,6 @@
             justify-content: center;
             transition: background 0.3s;
         }
-
         .carousel-btn:hover { background: rgba(59, 130, 246, 0.8); }
         .carousel-btn.prev { left: 20px; }
         .carousel-btn.next { right: 20px; }
@@ -184,12 +174,37 @@
         .card h3 { font-size: 1.25rem; margin-bottom: 0.5rem; color: var(--text-main); }
         .card p { margin: 0; font-size: 1rem; max-width: 100%; color: var(--text-muted); }
 
+        /* --- COMPARISON (NEW) --- */
+        .comparison { padding: 6rem 0; background: #121214; border-top: 1px solid #27272a; border-bottom: 1px solid #27272a; }
+        .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
+        .comparison-col h3 { font-size: 1.8rem; margin-bottom: 2rem; }
+        .comparison-col.bad h3 { color: var(--accent-red); }
+        .comparison-col.good h3 { color: var(--accent-green); }
+        .comparison-list { list-style: none; }
+        .comparison-list li { margin-bottom: 1.5rem; font-size: 1.1rem; color: var(--text-muted); display: flex; align-items: center; gap: 15px; }
+        .comparison-col.bad i { color: var(--accent-red); font-size: 1.2rem; min-width: 25px; }
+        .comparison-col.good i { color: var(--accent-green); font-size: 1.2rem; min-width: 25px; }
+
+        /* --- QUOTES (NEW) --- */
+        .quotes-section { padding: 6rem 0; text-align: center; }
+        .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 3rem; margin-top: 3rem; }
+        .quote-card { background: rgba(255,255,255,0.03); padding: 2rem; border-radius: 16px; border: 1px solid #27272a; }
+        .quote-text { font-family: "Georgia", serif; font-size: 1.25rem; font-style: italic; color: #e4e4e7; margin-bottom: 1.5rem; }
+        .quote-author { font-weight: 700; color: var(--accent); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .quote-role { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+        /* --- FAQ (NEW) --- */
+        .faq { padding: 6rem 0; max-width: 800px; margin: 0 auto; }
+        .faq-item { border-bottom: 1px solid #27272a; padding: 2rem 0; }
+        .faq-item:last-child { border-bottom: none; }
+        .faq-item h3 { font-size: 1.3rem; margin-bottom: 0.8rem; color: var(--text-main); }
+        .faq-item p { margin: 0; max-width: 100%; }
+
         /* --- FOOTER --- */
         footer {
             border-top: 1px solid #27272a;
             padding: 3rem 0;
             text-align: center;
-            margin-top: 4rem;
             font-size: 0.9rem;
             color: #666;
         }
@@ -199,6 +214,7 @@
             h1 { font-size: 2.5rem; }
             .hero { padding: 4rem 0; }
             .carousel-btn { width: 35px; height: 35px; font-size: 1rem; padding: 0.5rem; }
+            .comparison-grid { grid-template-columns: 1fr; gap: 3rem; }
         }
     </style>
 </head>
@@ -239,7 +255,7 @@
                     </div>
                 </div>
             </div>
-            </section>
+        </section>
 
         <section id="features" class="features">
             <div style="text-align: center;">
@@ -253,53 +269,123 @@
                     <h3>Automated DCF</h3>
                     <p>Instant intrinsic value calculation. 5-year projections based on FCF, fully customizable assumptions.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
                     <h3>Reverse DCF</h3>
                     <p>Reality check. See exactly what growth rate the market price implies, and compare it to yours.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-sliders"></i></div>
                     <h3>Dynamic Entry Planner</h3>
                     <p>Set your desired <strong>Margin of Safety</strong> via a slider. The app tells you the exact price to wait for.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-layer-group"></i></div>
                     <h3>P/E Reality Check</h3>
                     <p>Compare your exit assumptions with historical and current multiples to avoid overvaluation.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-money-bill-trend-up"></i></div>
                     <h3>FCF Yield Gauge</h3>
                     <p>The "Market Payback". Instantly see how much free cash flow the company generates relative to its price.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-scale-balanced"></i></div>
                     <h3>PEG Ratio (Lynch)</h3>
                     <p>Growth-adjusted valuation. Determine if a high P/E is justified by the company's growth rate.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-table-cells"></i></div>
                     <h3>Sensitivity Matrix</h3>
                     <p>7x7 Heatmap. Visualize how changes in discount rates and growth estimates impact fair value.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-heart-pulse"></i></div>
                     <h3>Risk Assessment</h3>
                     <p>Visual Balance Sheet check. Net Cash vs. Debt analysis to ensure the company is solvent.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-globe"></i></div>
                     <h3>Multi-Currency</h3>
                     <p>Native support for international stocks. Ticker input automatically detects currency (€, $, £, ¥).</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="comparison">
+            <div class="container">
+                <div class="comparison-grid">
+                    <div class="comparison-col bad">
+                        <h3><i class="fa-solid fa-file-excel"></i> The Spreadsheet Way</h3>
+                        <ul class="comparison-list">
+                            <li><i class="fa-solid fa-xmark"></i> Broken formulas and #REF! errors</li>
+                            <li><i class="fa-solid fa-xmark"></i> Manual data entry from Yahoo Finance</li>
+                            <li><i class="fa-solid fa-xmark"></i> Cluttered, distracted interface</li>
+                            <li><i class="fa-solid fa-xmark"></i> 30 minutes per valuation</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-col good">
+                        <h3><i class="fa-solid fa-bolt"></i> The Intrinsic Way</h3>
+                        <ul class="comparison-list">
+                            <li><i class="fa-solid fa-check"></i> <strong>Automated</strong> financial data fetching</li>
+                            <li><i class="fa-solid fa-check"></i> Error-free, tested financial models</li>
+                            <li><i class="fa-solid fa-check"></i> Clean, focused macOS native UI</li>
+                            <li><i class="fa-solid fa-check"></i> <strong>30 seconds</strong> per valuation</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="quotes-section">
+            <div class="container">
+                <h2>Wisdom of the Masters</h2>
+                <p>Intrinsic is built upon the timeless principles of Value Investing.</p>
+                
+                <div class="quote-grid">
+                    <div class="quote-card">
+                        <p class="quote-text">"Price is what you pay. Value is what you get."</p>
+                        <div class="quote-author">Warren Buffett</div>
+                        <div class="quote-role">Chairman, Berkshire Hathaway</div>
+                    </div>
+
+                    <div class="quote-card">
+                        <p class="quote-text">"The function of the margin of safety is, in essence, to render an accurate estimate of the future unnecessary."</p>
+                        <div class="quote-author">Benjamin Graham</div>
+                        <div class="quote-role">The Father of Value Investing</div>
+                    </div>
+
+                    <div class="quote-card">
+                        <p class="quote-text">"People who confuse the P/E ratio with the PEG ratio are making a huge mistake."</p>
+                        <div class="quote-author">Peter Lynch</div>
+                        <div class="quote-role">Legendary Manager, Magellan Fund</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="faq">
+            <div class="container">
+                <h2 style="text-align: center;">Frequently Asked Questions</h2>
+                
+                <div class="faq-item">
+                    <h3>Is the market data real-time?</h3>
+                    <p>Intrinsic fetches end-of-day data for most metrics and real-time quotes when available via standard public financial APIs. It's designed for long-term investors, not day traders.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Which stock markets are supported?</h3>
+                    <p>We support all major global exchanges including NYSE, NASDAQ, LSE, Euronext, TSX, and many Asian markets. Simply type the ticker (e.g., "AIR.PA" for Airbus).</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Is my financial data private?</h3>
+                    <p>Yes, absolutely. All calculations and assumption inputs happen locally on your Mac. We do not track your portfolio or your watchlists.</p>
+                </div>
+
+                <div class="faq-item">
+                    <h3>Do I need to be a finance expert?</h3>
+                    <p>No. While the tools are professional-grade (DCF, PEG), the interface is designed to be intuitive. We provide tooltips and context for every input.</p>
                 </div>
             </div>
         </section>
@@ -318,57 +404,31 @@
         
         let currentIndex = 0;
         const totalSlides = slides.length;
-        const intervalTime = 5000; // 5000ms = 5 secondes
+        const intervalTime = 5000;
         let slideInterval;
 
-        // Fonction pour changer de slide
         function updateCarousel() {
-            const width = track.clientWidth;
             track.style.transform = `translateX(-${currentIndex * 100}%)`;
         }
 
         function nextSlide() {
             currentIndex++;
-            if (currentIndex >= totalSlides) {
-                currentIndex = 0;
-            }
+            if (currentIndex >= totalSlides) { currentIndex = 0; }
             updateCarousel();
         }
 
         function prevSlide() {
             currentIndex--;
-            if (currentIndex < 0) {
-                currentIndex = totalSlides - 1;
-            }
+            if (currentIndex < 0) { currentIndex = totalSlides - 1; }
             updateCarousel();
         }
 
-        // Lancer le timer automatique
-        function startSlideTimer() {
-            slideInterval = setInterval(nextSlide, intervalTime);
-        }
+        function startSlideTimer() { slideInterval = setInterval(nextSlide, intervalTime); }
+        function resetSlideTimer() { clearInterval(slideInterval); startSlideTimer(); }
 
-        // Arrêter le timer (quand on clique manuellement)
-        function resetSlideTimer() {
-            clearInterval(slideInterval);
-            startSlideTimer();
-        }
-
-        // Événements boutons
-        nextBtn.addEventListener('click', () => {
-            nextSlide();
-            resetSlideTimer();
-        });
-
-        prevBtn.addEventListener('click', () => {
-            prevSlide();
-            resetSlideTimer();
-        });
-
-        // Gérer le redimensionnement de la fenêtre
+        nextBtn.addEventListener('click', () => { nextSlide(); resetSlideTimer(); });
+        prevBtn.addEventListener('click', () => { prevSlide(); resetSlideTimer(); });
         window.addEventListener('resize', updateCarousel);
-
-        // Démarrer au chargement
         startSlideTimer();
     </script>
 
