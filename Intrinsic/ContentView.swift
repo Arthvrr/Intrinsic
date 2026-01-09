@@ -374,8 +374,8 @@ struct SensitivityMatrixView: View {
     let calculate: (Double, Double) -> Double
     
     // 5 Étapes : -2%, -1%, Base, +1%, +2%
-    var growthSteps: [Double] { [baseGrowth - 2, baseGrowth - 1, baseGrowth, baseGrowth + 1, baseGrowth + 2] }
-    var discountSteps: [Double] { [baseDiscount - 1, baseDiscount - 0.5, baseDiscount, baseDiscount + 0.5, baseDiscount + 1] }
+    var growthSteps: [Double] { [baseGrowth - 3, baseGrowth - 2, baseGrowth - 1, baseGrowth, baseGrowth + 1, baseGrowth + 2, baseGrowth + 3] }
+    var discountSteps: [Double] { [baseDiscount - 3, baseDiscount - 2, baseDiscount - 1, baseDiscount, baseDiscount + 1, baseDiscount + 2, baseDiscount + 3] }
     
     // Fonction pour générer la couleur (Heatmap)
     func getColor(value: Double) -> Color {
