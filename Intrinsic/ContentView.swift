@@ -261,7 +261,17 @@ struct ContentView: View {
             defer { DispatchQueue.main.async { isLoading = false } }
             if let data = data, let resp = try? JSONDecoder().decode(YahooResponse.self, from: data), let res = resp.chart.result?.first {
                 let p = res.meta.regularMarketPrice ?? res.meta.previousClose ?? 0.0
-                DispatchQueue.main.async { self.currentPrice = p; self.priceDisplay = String(format: "%.2f %@", p, res.meta.currency ?? "USD") }
+                // --- MODIFICATION ICI POUR L'AFFICHAGE DU PRIX ($ 185.04) ---
+                let currencyCode = res.meta.currency ?? "USD"
+                let symbol: String
+                if currencyCode == "EUR" { symbol = "€" }
+                else if currencyCode == "GBP" { symbol = "£" }
+                else { symbol = "$" } // Par défaut $ pour USD ou autres
+                
+                DispatchQueue.main.async {
+                    self.currentPrice = p
+                    self.priceDisplay = String(format: "%.2f %@", p,symbol) // Affiche: $ 185.04
+                }
             }
         }.resume()
     }
