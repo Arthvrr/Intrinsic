@@ -65,7 +65,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                     .background(Color.blue.opacity(0.1))
-               
+                
                 // 2. Formulaire (Scrollable)
                 Form {
                     Section(header: Text("Recherche")) {
@@ -81,7 +81,7 @@ struct ContentView: View {
                         }
                     }
                     
-                    // --- AJOUT DU LIEN DANS LE FOOTER DE CETTE SECTION ---
+                    // Lien StockAnalysis
                     Section(header: Text("Fondamentaux"), footer: stockAnalysisLink) {
                         inputRowString(label: "FCF / Action", value: $fcfInput, helpText: "Free Cash Flow par action")
                         inputRowString(label: "Nombre d'actions", value: $sharesInput, helpText: "Nombre total d'actions en circulation (en Milliards)")
@@ -102,7 +102,7 @@ struct ContentView: View {
                     }
                 }
                 .formStyle(.grouped)
-             
+              
                 // 3. LE BOUTON CALCULER
                 Divider()
                 Button(action: {
@@ -123,42 +123,17 @@ struct ContentView: View {
             // --- COLONNE DROITE (Résultats) ---
             ZStack(alignment: .top) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
-             
+              
                 ScrollView {
                     VStack(spacing: 30) {
-                        
+                       
                         // En-tête Chiffres
                         ResultHeaderView(
                             priceDisplay: priceDisplay,
                             intrinsicValue: intrinsicValue,
                             currentPrice: currentPrice
                         )
-                        .padding(.top, 40)
-                        
-                        // Graphique à Barres
-                        if currentPrice > 0 && intrinsicValue > 0 {
-                            ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
-                                .frame(height: 180)
-                                .padding(.horizontal)
-                        }
-                        
-                        // Graphique Linéaire INTERACTIF
-                        if !projectionData.isEmpty && intrinsicValue > 0 {
-                            ProjectedGrowthChart(data: projectionData)
-                                .padding(.horizontal)
-                        }
-                        
-                        // Matrice de Sensibilité
-                        if intrinsicValue > 0 {
-                            SensitivityMatrixView(
-                                baseGrowth: growthRate,
-                                baseDiscount: discountRate,
-                                currentPrice: currentPrice,
-                                calculate: runSimulation
-                            )
-                            .padding(.horizontal)
-                        }
-
+                        .padding(.top, 20)
                         // Marge de sécurité
                         if currentPrice > 0 && intrinsicValue > 0 {
                             let margin = ((intrinsicValue - currentPrice) / intrinsicValue) * 100
@@ -175,8 +150,33 @@ struct ContentView: View {
                                     .background(margin > 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
                                     .cornerRadius(8)
                             }
-                            .padding(.bottom, 50)
+                            .padding(.bottom, 20)
                         }
+                       
+                        // Graphique à Barres
+                        if currentPrice > 0 && intrinsicValue > 0 {
+                            ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
+                                .frame(height: 180)
+                                .padding(.horizontal)
+                        }
+                       
+                        // Graphique Linéaire (UPDATED)
+                        if !projectionData.isEmpty && intrinsicValue > 0 {
+                            ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice)
+                                .padding(.horizontal)
+                        }
+                       
+                        // Matrice de Sensibilité
+                        if intrinsicValue > 0 {
+                            SensitivityMatrixView(
+                                baseGrowth: growthRate,
+                                baseDiscount: discountRate,
+                                currentPrice: currentPrice,
+                                calculate: runSimulation
+                            )
+                            .padding(.horizontal)
+                        }
+
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 20)
@@ -188,11 +188,10 @@ struct ContentView: View {
     // --- COMPOSANT LIEN WEB ---
     var stockAnalysisLink: some View {
         let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Construit le lien dynamique vers la page Financials
         let urlString = cleanTicker.isEmpty
             ? "https://stockanalysis.com"
             : "https://stockanalysis.com/stocks/\(cleanTicker)/financials/"
-        
+       
         return Link(destination: URL(string: urlString)!) {
             HStack(spacing: 4) {
                 Image(systemName: "arrow.up.right.square")
@@ -222,8 +221,11 @@ struct ContentView: View {
             method: selectedMethod, tg: terminalGrowth, exitMult: exitMultiple
         )
         
+        // --- LOGIQUE DE PROJECTION ---
+        // Le point de départ est la Valeur Intrinsèque (Année 0)
         var newProjections: [ProjectionPoint] = []
-        let startValue = currentPrice > 0 ? currentPrice : result
+        let startValue = result
+        
         newProjections.append(ProjectionPoint(year: 0, value: startValue))
         var projectedValue = startValue
         
@@ -300,16 +302,13 @@ struct ContentView: View {
         }.resume()
     }
     
-    // --- UPDATE : HELPERS UI AVEC BOUTON INFO ---
+    // --- HELPERS UI ---
     
     func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View {
         HStack {
             Text(label)
-                .help(helpText) // Garde le tooltip natif (délai)
-            
-            // Nouveau Bouton Info Interactif
+                .help(helpText)
             InfoButton(helpText: helpText)
-            
             Spacer()
             TextField("0", text: value)
                 .textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing)
@@ -320,10 +319,7 @@ struct ContentView: View {
         HStack {
             Text(label)
                 .help(helpText)
-            
-            // Nouveau Bouton Info Interactif
             InfoButton(helpText: helpText)
-            
             Spacer()
             HStack(spacing: 2) {
                 TextField("", value: value, format: .number)
@@ -334,7 +330,7 @@ struct ContentView: View {
     }
 }
 
-// --- NOUVEAU COMPOSANT : BOUTON INFO (POPOVER) ---
+// --- BOUTON INFO ---
 struct InfoButton: View {
     let helpText: String
     @State private var showPopover = false
@@ -343,20 +339,20 @@ struct InfoButton: View {
         Button(action: { showPopover.toggle() }) {
             Image(systemName: "info.circle")
                 .foregroundColor(.secondary)
-                .contentShape(Rectangle()) // Rend la zone de clic un peu plus confortable
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain) // Enlève le style bouton classique pour garder juste l'icône
+        .buttonStyle(.plain)
         .popover(isPresented: $showPopover) {
             Text(helpText)
                 .padding()
-                .frame(width: 250) // Largeur de la bulle d'aide
+                .frame(width: 250)
                 .multilineTextAlignment(.leading)
         }
     }
 }
 
 
-// --- AUTRES COMPOSANTS (Inchangés) ---
+// --- AUTRES COMPOSANTS ---
 
 struct ResultHeaderView: View {
     var priceDisplay: String
@@ -386,8 +382,8 @@ struct SensitivityMatrixView: View {
     let currentPrice: Double
     let calculate: (Double, Double) -> Double
     
-    var growthSteps: [Double] { [baseGrowth - 2, baseGrowth, baseGrowth + 2] }
-    var discountSteps: [Double] { [baseDiscount - 1, baseDiscount, baseDiscount + 1] }
+    var growthSteps: [Double] { [baseGrowth - 2, baseGrowth - 1, baseGrowth, baseGrowth + 1, baseGrowth + 2] }
+    var discountSteps: [Double] { [baseDiscount - 2, baseDiscount - 1, baseDiscount, baseDiscount + 1, baseDiscount + 2] }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -437,10 +433,10 @@ struct SensitivityMatrixView: View {
                     }
                 }
             }
-            .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(12)
         }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
     }
 }
 
@@ -474,60 +470,104 @@ struct BarView: View {
     }
 }
 
+// --- GRAPHIQUE LINÉAIRE RESTAURÉ (Style "Smooth" + Ligne Prix) ---
 struct ProjectedGrowthChart: View {
     var data: [ProjectionPoint]
+    var currentPrice: Double
     
     @State private var selectedYear: Int?
     
-    var isPositiveGrowth: Bool {
-        guard let first = data.first, let last = data.last else { return true }
-        return last.value >= first.value
+    // Calcul pour que l'échelle Y inclue bien tout (Prix et Valeur) avec un peu de marge
+    var yDomain: ClosedRange<Double> {
+        let allValues = data.map { $0.value } + [currentPrice]
+        let minVal = allValues.min() ?? 0
+        let maxVal = allValues.max() ?? 100
+        // Marge de 10% en haut et en bas pour que les points ne touchent pas les bords
+        return (minVal * 0.9)...(maxVal * 1.1)
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Projection du prix (Impliquée par la croissance)")
-                .font(.headline).foregroundColor(.secondary)
-            
-            Chart(data) { point in
-                LineMark(x: .value("Année", point.year), y: .value("Valeur", point.value))
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(isPositiveGrowth ? Color.green.gradient : Color.red.gradient)
-                    .lineStyle(StrokeStyle(lineWidth: 3))
+        VStack(alignment: .leading, spacing: 15) {
+            // Titre et Légende propre
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Projection Valeur vs Prix")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
                 
-                AreaMark(x: .value("Année", point.year), yStart: .value("Base", data.first?.value ?? 0), yEnd: .value("Valeur", point.value))
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(isPositiveGrowth ? Color.green.opacity(0.1).gradient : Color.red.opacity(0.1).gradient)
-                
-                if let selectedYear, selectedYear == point.year {
-                    RuleMark(x: .value("Année", selectedYear))
-                        .foregroundStyle(Color.gray.opacity(0.5))
-                        .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
-                            VStack(spacing: 2) {
-                                Text("Année \(point.year)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Text("\(Int(point.value)) $")
-                                    .font(.body)
-                                    .bold()
-                                    .foregroundColor(.primary)
-                            }
-                            .padding(6)
-                            .background(.regularMaterial)
-                            .cornerRadius(6)
-                            .shadow(radius: 2)
-                        }
-                    
-                    PointMark(x: .value("Année", point.year), y: .value("Valeur", point.value))
-                        .foregroundStyle(Color.primary)
+                HStack(spacing: 15) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption)
+                        Text("Valeur Intrinsèque").font(.caption).bold()
+                    }
+                    HStack(spacing: 5) {
+                        Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption)
+                        Text("Prix Actuel").font(.caption).bold()
+                    }
                 }
             }
+            
+            Chart {
+                // 1. LIGNE ROUGE (PRIX ACTUEL) - Une ligne traversante simple
+                RuleMark(y: .value("Prix Actuel", currentPrice))
+                    .foregroundStyle(.red)
+                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5])) // Pointillés
+                    .annotation(position: .top, alignment: .leading) {
+                        Text("Prix: \(Int(currentPrice))$")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+
+                // 2. LIGNE BLEUE (VALEUR)
+                ForEach(data) { point in
+                    // La ligne qui relie les points
+                    LineMark(
+                        x: .value("Année", point.year),
+                        y: .value("Valeur", point.value)
+                    )
+                    .foregroundStyle(.blue)
+                    .lineStyle(StrokeStyle(lineWidth: 3))
+                    .interpolationMethod(.monotone) // Lissage léger mais précis
+
+                    // Les points (Ronds)
+                    PointMark(
+                        x: .value("Année", point.year),
+                        y: .value("Valeur", point.value)
+                    )
+                    .foregroundStyle(.blue)
+                    .symbolSize(60) // Taille des points
+                }
+                
+                // 3. INTERACTION (Curseur au clic)
+                if let selectedYear {
+                    RuleMark(x: .value("Année", selectedYear))
+                        .foregroundStyle(Color.gray.opacity(0.3))
+                        .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
+                            if let point = data.first(where: { $0.year == selectedYear }) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Année \(point.year)")
+                                        .font(.caption).bold().foregroundColor(.secondary)
+                                    Text("Valeur: \(Int(point.value)) $")
+                                        .font(.caption).bold().foregroundColor(.blue)
+                                }
+                                .padding(6)
+                                .background(.regularMaterial)
+                                .cornerRadius(6)
+                                .shadow(radius: 2)
+                            }
+                        }
+                }
+            }
+            .chartYScale(domain: yDomain) // Force l'échelle
             .chartXSelection(value: $selectedYear)
             .chartXScale(domain: 0...5)
-            .frame(height: 150)
+            .frame(height: 250) // Hauteur confortable
         }
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+        )
     }
 }
