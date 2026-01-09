@@ -34,6 +34,9 @@ struct ContentView: View {
     @State private var priceDisplay: String = "---"
     @State private var isLoading = false
     @State private var currentPrice: Double = 0.0
+    
+    // NOUVEAU : On stocke le symbole de la devise ici (par défaut $)
+    @State private var currencySymbol: String = "$"
 
     @State private var isSidebarVisible: Bool = true
 
@@ -119,35 +122,40 @@ struct ContentView: View {
               
                 ScrollView {
                     VStack(spacing: 30) {
-                        // Header Results
-                        ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice)
-                            .padding(.top, 40)
+                        // Header Results (On passe la devise)
+                        ResultHeaderView(
+                            priceDisplay: priceDisplay,
+                            intrinsicValue: intrinsicValue,
+                            currentPrice: currentPrice,
+                            symbol: currencySymbol
+                        )
+                        .padding(.top, 40)
                         
                         // --- REVERSE DCF BLOCK ---
                         if hasCalculated && currentPrice > 0 {
                             ReverseDCFView(
                                 impliedGrowth: marketImpliedGrowth,
                                 userGrowth: growthRate,
-                                currentPrice: currentPrice
+                                currentPrice: currentPrice,
+                                symbol: currencySymbol
                             )
                             .padding(.horizontal)
-                            // Force redraw when data changes
                             .id("ReverseDCF-\(marketImpliedGrowth)-\(growthRate)")
                         }
                        
                         // Bar Chart
                         if hasCalculated && currentPrice > 0 {
-                            ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue)
+                            ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
                                 .frame(height: 180).padding(.horizontal)
                         }
                        
                         // Line Chart
                         if !projectionData.isEmpty && hasCalculated {
-                            ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice)
+                            ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.horizontal)
                         }
                        
-                        // Heatmap (7x7)
+                        // Heatmap
                         if hasCalculated {
                             SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
                                 .padding(.horizontal).padding(.bottom, 50)
@@ -253,6 +261,20 @@ struct ContentView: View {
         return sumPV + (terminalValue / pow(1 + rDec, 5.0)) + netCashPerShare
     }
     
+    // --- FONCTION POUR DETECTER LE SYMBOLE ---
+    func getCurrencySymbol(code: String) -> String {
+        switch code {
+        case "EUR": return "€"
+        case "GBP": return "£"
+        case "JPY": return "¥"
+        case "CNY": return "¥"
+        case "INR": return "₹"
+        case "CAD": return "C$"
+        case "AUD": return "A$"
+        default: return "$"
+        }
+    }
+    
     func fetchPrice() {
         let clean = ticker.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\"", with: "").uppercased()
         guard !clean.isEmpty, let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(clean)?interval=1d") else { return }
@@ -261,16 +283,15 @@ struct ContentView: View {
             defer { DispatchQueue.main.async { isLoading = false } }
             if let data = data, let resp = try? JSONDecoder().decode(YahooResponse.self, from: data), let res = resp.chart.result?.first {
                 let p = res.meta.regularMarketPrice ?? res.meta.previousClose ?? 0.0
-                // --- MODIFICATION ICI POUR L'AFFICHAGE DU PRIX ($ 185.04) ---
+                
+                // --- DETECTION INTELLIGENTE DE LA DEVISE ---
                 let currencyCode = res.meta.currency ?? "USD"
-                let symbol: String
-                if currencyCode == "EUR" { symbol = "€" }
-                else if currencyCode == "GBP" { symbol = "£" }
-                else { symbol = "$" } // Par défaut $ pour USD ou autres
+                let sym = getCurrencySymbol(code: currencyCode)
                 
                 DispatchQueue.main.async {
                     self.currentPrice = p
-                    self.priceDisplay = String(format: "%.2f %@", p,symbol) // Affiche: $ 185.04
+                    self.currencySymbol = sym // On stocke le symbole
+                    self.priceDisplay = String(format: "%.2f %@", p, sym) // Affichage propre : 185.04 €
                 }
             }
         }.resume()
@@ -308,14 +329,13 @@ struct InfoButton: View {
     }
 }
 
-// --- 1. REVERSE DCF VIEW (CORRECTED LOGIC) ---
+// --- 1. REVERSE DCF VIEW (UPDATED FOR CURRENCY) ---
 struct ReverseDCFView: View {
     var impliedGrowth: Double
     var userGrowth: Double
     var currentPrice: Double
+    var symbol: String // Nouveau paramètre
     
-    // LOGIC FIX:
-    // If Market Implied Growth (17%) > User Growth (15%) -> Market is Optimistic -> Price is High -> RISKY for you.
     var isRisky: Bool { impliedGrowth > userGrowth }
     
     var body: some View {
@@ -330,7 +350,8 @@ struct ReverseDCFView: View {
                     .font(.headline)
                     .foregroundColor(.secondary)
                 
-                Text("To justify the price of \(String(format: "%.2f", currentPrice)), the market expects a growth of:")
+                // Utilisation du symbole dynamique
+                Text("To justify the price of \(String(format: "%.2f %@", currentPrice, symbol)), the market expects a growth of:")
                     .font(.caption)
                     .foregroundColor(.secondary)
                 
@@ -342,7 +363,6 @@ struct ReverseDCFView: View {
                     Text("per year")
                         .font(.caption).bold().foregroundColor(.secondary)
                     
-                    // TEXT FIX:
                     Text(isRisky ? "(Higher than your \(String(format: "%.1f", userGrowth))%)" : "(Lower than your \(String(format: "%.1f", userGrowth))%)")
                         .font(.caption)
                         .foregroundColor(isRisky ? .red : .green)
@@ -358,14 +378,21 @@ struct ReverseDCFView: View {
     }
 }
 
+// --- HEADER UPDATED FOR CURRENCY ---
 struct ResultHeaderView: View {
-    var priceDisplay: String; var intrinsicValue: Double; var currentPrice: Double
+    var priceDisplay: String; var intrinsicValue: Double; var currentPrice: Double; var symbol: String
     var body: some View {
         VStack(spacing: 15) {
             HStack(spacing: 50) {
                 VStack { Text("Current Price").font(.headline).foregroundColor(.secondary); Text(priceDisplay).font(.system(size: 36, weight: .bold)) }
                 Image(systemName: "arrow.right").font(.largeTitle).opacity(0.3)
-                VStack { Text("Intrinsic Value").font(.headline).foregroundColor(.secondary); Text(String(format: "%.2f $", intrinsicValue)).font(.system(size: 36, weight: .bold)).foregroundColor(intrinsicValue > currentPrice ? .green : .red) }
+                VStack {
+                    Text("Intrinsic Value").font(.headline).foregroundColor(.secondary);
+                    // Utilisation du symbole dynamique
+                    Text(String(format: "%.2f %@", intrinsicValue, symbol))
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(intrinsicValue > currentPrice ? .green : .red)
+                }
             }
             if currentPrice > 0 && intrinsicValue > 0 {
                 let margin = ((intrinsicValue - currentPrice) / intrinsicValue) * 100
@@ -382,7 +409,7 @@ struct ResultHeaderView: View {
     }
 }
 
-// --- 2. SENSITIVITY MATRIX 7x7 (UPDATED) ---
+// --- 2. SENSITIVITY MATRIX 7x7 ---
 
 struct SensitivityMatrixView: View {
     let baseGrowth: Double; let baseDiscount: Double; let currentPrice: Double; let calculate: (Double, Double) -> Double
@@ -426,7 +453,7 @@ struct SensitivityMatrixView: View {
                         ForEach(growthSteps, id: \.self) { g in
                             let val = calculate(g, r)
                             Text(String(format: "%.0f", val))
-                                .font(.system(size: 11, weight: .medium)) // Smaller font for 7x7
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.primary)
                                 .frame(maxWidth: .infinity, minHeight: 30)
                                 .background(getColor(value: val))
@@ -443,31 +470,33 @@ struct SensitivityMatrixView: View {
     }
 }
 
+// --- BAR CHART UPDATED ---
 struct ValuationBarChart: View {
-    var marketPrice: Double; var intrinsicValue: Double
+    var marketPrice: Double; var intrinsicValue: Double; var symbol: String
     private var maxValue: Double { max(marketPrice, intrinsicValue) * 1.1 }
     var body: some View {
         GeometryReader { g in
             HStack(alignment: .bottom, spacing: 60) {
-                BarView(value: marketPrice, maxValue: maxValue, label: "Market", color: .gray.opacity(0.4), height: g.size.height)
-                BarView(value: intrinsicValue, maxValue: maxValue, label: "Value", color: intrinsicValue >= marketPrice ? .green : .red, height: g.size.height)
+                BarView(value: marketPrice, maxValue: maxValue, label: "Market", color: .gray.opacity(0.4), height: g.size.height, symbol: symbol)
+                BarView(value: intrinsicValue, maxValue: maxValue, label: "Value", color: intrinsicValue >= marketPrice ? .green : .red, height: g.size.height, symbol: symbol)
             }
         }
     }
 }
 struct BarView: View {
-    var value: Double; var maxValue: Double; var label: String; var color: Color; var height: CGFloat
+    var value: Double; var maxValue: Double; var label: String; var color: Color; var height: CGFloat; var symbol: String
     var body: some View {
         VStack {
-            Text("\(Int(value)) $").font(.headline).foregroundColor(.secondary)
+            Text("\(Int(value)) \(symbol)").font(.headline).foregroundColor(.secondary)
             RoundedRectangle(cornerRadius: 8).fill(color.gradient).frame(height: maxValue > 0 ? height * (value / maxValue) : 0).animation(.spring, value: value)
             Text(label).font(.subheadline).fontWeight(.bold).foregroundColor(.secondary)
         }.frame(maxWidth: .infinity)
     }
 }
 
+// --- LINE CHART UPDATED ---
 struct ProjectedGrowthChart: View {
-    var data: [ProjectionPoint]; var currentPrice: Double
+    var data: [ProjectionPoint]; var currentPrice: Double; var symbol: String
     @State private var selectedYear: Int?
     var yDomain: ClosedRange<Double> {
         let all = data.map { $0.value } + [currentPrice]
@@ -484,7 +513,7 @@ struct ProjectedGrowthChart: View {
             }
             Chart {
                 RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
-                    .annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))$").font(.caption2).foregroundColor(.red) }
+                    .annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))\(symbol)").font(.caption2).foregroundColor(.red) }
                 ForEach(data) { point in
                     LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone)
                     PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60)
@@ -495,7 +524,7 @@ struct ProjectedGrowthChart: View {
                             if let point = data.first(where: { $0.year == selectedYear }) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Year \(point.year)").font(.caption).bold().foregroundColor(.secondary)
-                                    Text("Value: \(Int(point.value)) $").font(.caption).bold().foregroundColor(.blue)
+                                    Text("Value: \(Int(point.value)) \(symbol)").font(.caption).bold().foregroundColor(.blue)
                                 }.padding(6).background(.regularMaterial).cornerRadius(6).shadow(radius: 2)
                             }
                         }
