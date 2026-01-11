@@ -1,8 +1,8 @@
 import SwiftUI
 import Charts
 
-// --- MODELS INTERNES (DTOs) - Nettoyés pour éviter les warnings Swift 6 ---
-// On retire 'Sendable' ici car ces structs ne quittent pas l'actor FinnhubService.
+// --- MODELS INTERNES (DTOs) - Nettoyés pour Swift 6 ---
+// Pas de 'Sendable' ici car ils restent internes à l'actor
 
 struct FinnhubQuote: Codable {
     let c: Double
@@ -105,7 +105,7 @@ actor FinnhubService {
     private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0"
     private let exchangeRateApiKey = "2d3a18191c2ffd303066358c"
     
-    // Cette structure sort de l'actor vers la MainActor (UI), donc elle DOIT être Sendable
+    // Structure de sortie (Doit être Sendable pour l'UI)
     struct StockData: Sendable {
         let price: Double
         let currency: String
@@ -301,6 +301,8 @@ struct ContentView: View {
     @State private var intrinsicValue: Double = 0.0
     @State private var marketImpliedGrowth: Double = 0.0
     @State private var projectionData: [ProjectionPoint] = []
+    
+    // ETAT CRITIQUE : Gère l'affichage des résultats
     @State private var hasCalculated: Bool = false
     
     // NEW DATA STATES
@@ -366,9 +368,8 @@ struct ContentView: View {
                             inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
                             inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in %")
                             
-                            // --- BOUTON MAGIC WACC ---
                             if let beta = betaInput {
-                                let riskFree = 4.2 // Taux US 10 ans approx
+                                let riskFree = 4.2
                                 let riskPremium = 5.0
                                 let wacc = riskFree + (beta * riskPremium)
                                 Button(action: { self.discountRate = Double(String(format: "%.1f", wacc)) ?? 10.0 }) {
@@ -404,31 +405,30 @@ struct ContentView: View {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
             
                 ScrollView {
-                    VStack(spacing: 30) {
-                        ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
-                            .padding(.top, 40)
-                        
-                        if hasCalculated && currentPrice > 0 {
-                            ReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol)
-                                .padding(.horizontal)
-                        }
-                        
-                        if hasCalculated && currentPrice > 0 {
-                            ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
-                                .frame(height: 180).padding(.horizontal)
-                        }
-                        
-                        if !projectionData.isEmpty && hasCalculated {
-                            ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
-                                .padding(.horizontal)
-                        }
-                        
-                        if hasCalculated {
+                    // CONDITION D'AFFICHAGE : Rien ne s'affiche tant que !hasCalculated
+                    if hasCalculated {
+                        VStack(spacing: 30) {
+                            ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
+                                .padding(.top, 40)
+                            
+                            if currentPrice > 0 {
+                                ReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol)
+                                    .padding(.horizontal)
+                            }
+                            
+                            if currentPrice > 0 {
+                                ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
+                                    .frame(height: 180).padding(.horizontal)
+                            }
+                            
+                            if !projectionData.isEmpty {
+                                ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
+                                    .padding(.horizontal)
+                            }
+                            
                             SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
                                 .padding(.horizontal)
-                        }
-                        
-                        if hasCalculated {
+                            
                             FinancialHealthView(
                                 cash: parseDouble(cashInput),
                                 debt: parseDouble(debtInput),
@@ -437,9 +437,7 @@ struct ContentView: View {
                                 symbol: currencySymbol
                             )
                             .padding(.horizontal)
-                        }
-                        
-                        if hasCalculated {
+                            
                             // PEERS COMPARISON
                             if !peersData.isEmpty {
                                 PeersComparisonView(mainTicker: ticker, mainPE: parseDouble(currentPEInput), peers: peersData)
@@ -468,33 +466,45 @@ struct ContentView: View {
                                 )
                                 .padding(.horizontal)
                             }
-                        }
-                        
-                        if hasCalculated && intrinsicValue > 0 {
-                            BuyBoxView(
-                                intrinsicValue: intrinsicValue,
-                                currentPrice: currentPrice,
-                                marginOfSafety: $marginOfSafety,
-                                symbol: currencySymbol
-                            )
-                            .padding(.horizontal)
                             
-                            if yearHigh > 0 {
-                                PriceRangeChart(currentPrice: currentPrice, yearHigh: yearHigh, symbol: currencySymbol)
+                            if intrinsicValue > 0 {
+                                BuyBoxView(
+                                    intrinsicValue: intrinsicValue,
+                                    currentPrice: currentPrice,
+                                    marginOfSafety: $marginOfSafety,
+                                    symbol: currencySymbol
+                                )
+                                .padding(.horizontal)
+                                
+                                if yearHigh > 0 {
+                                    PriceRangeChart(currentPrice: currentPrice, yearHigh: yearHigh, symbol: currencySymbol)
+                                        .padding(.horizontal)
+                                }
+                            }
+                            
+                            // EXOTIC BETA GAUGE (MOVED TO BOTTOM)
+                            if let beta = betaInput {
+                                ExoticBetaGauge(beta: beta)
                                     .padding(.horizontal)
+                                    .padding(.bottom, 50)
                             }
                         }
-                        
-                        // --- EXOTIC BETA GAUGE (MOVED TO BOTTOM) ---
-                        if let beta = betaInput {
-                            ExoticBetaGauge(beta: beta)
-                                .padding(.horizontal)
-                                .padding(.bottom, 50)
-                        } else {
-                            Color.clear.frame(height: 50)
+                        .frame(maxWidth: .infinity).padding(.horizontal, 20)
+                    } else {
+                        // Placeholder si on n'a pas encore calculé
+                        VStack {
+                            Spacer()
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.system(size: 60))
+                                .foregroundColor(.secondary.opacity(0.3))
+                            Text("Load ticker and press Calculate")
+                                .font(.title2)
+                                .foregroundColor(.secondary.opacity(0.5))
+                                .padding(.top)
+                            Spacer()
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .frame(maxWidth: .infinity).padding(.horizontal, 20)
                 }
             
                 if !isSidebarVisible {
@@ -516,6 +526,13 @@ struct ContentView: View {
         priceDisplay = "Loading..."
         peersData = []
         
+        // RESET DE L'UI AU CHARGEMENT D'UN NOUVEAU TICKER
+        withAnimation {
+            self.hasCalculated = false
+            self.intrinsicValue = 0.0
+            self.projectionData = []
+        }
+        
         Task {
             // 1. Fetch Main Stock Data
             if let data = try? await finnhubService.fetchStockData(symbol: cleanTicker) {
@@ -532,14 +549,12 @@ struct ContentView: View {
                     self.debtInput = String(format: "%.2f", data.debtB)
                     self.currentPEInput = String(format: "%.2f", data.peCurrent)
                     self.historicalPEInput = String(format: "%.2f", data.peHistoricalAvg)
-                    self.betaInput = data.beta // Store Beta
+                    self.betaInput = data.beta
                     
                     if let cagr = data.fcfCagr { self.fcfCagrDisplay = String(format: "%.1f%%", cagr) }
                     else { self.fcfCagrDisplay = nil }
                     
-                    // --- AUTO CALCULATE FIX ---
-                    // Dès que les données sont là, on lance le calcul sans attendre le clic utilisateur
-                    self.calculateIntrinsicValue()
+                    // ON NE LANCE PLUS LE CALCUL ICI AUTOMATIQUEMENT
                 }
             }
             
@@ -632,12 +647,10 @@ struct ContentView: View {
     }
 }
 
-// --- NEW CREATIVE BETA GAUGE (EXOTIC) ---
+// --- EXOTIC BETA GAUGE ---
 
 struct ExoticBetaGauge: View {
     let beta: Double
-    
-    // Plage du Beta : 0.0 à 3.0 (pour l'affichage)
     private var normalizedBeta: Double { min(max(beta, 0.0), 3.0) / 3.0 }
     
     private var colorZone: Color {
@@ -658,36 +671,32 @@ struct ExoticBetaGauge: View {
         VStack(spacing: 5) {
             HStack {
                 Image(systemName: "bolt.horizontal.circle.fill").foregroundColor(.blue)
-                Text("MARKET RISK (BETA)").font(.headline).foregroundColor(.secondary)
+                Text("Market Volatility (Beta)").font(.headline).foregroundColor(.secondary)
                 Spacer()
-                Text(String(format: "%.2f", beta)).font(.title2).fontWeight(.black).foregroundColor(colorZone)
+                Text(String(format: "%.2f", beta)).font(.title2).fontWeight(.black).foregroundColor(.blue)
             }
-            
             ZStack {
-                // Fond du tachymètre
                 Circle()
                     .trim(from: 0.0, to: 0.5)
                     .stroke(Color.gray.opacity(0.2), style: StrokeStyle(lineWidth: 20, lineCap: .round))
                     .rotationEffect(.degrees(180))
                     .frame(height: 150)
-                
-                // Arc coloré actif (Gradient Angulaire)
                 Circle()
                     .trim(from: 0.0, to: 0.5 * normalizedBeta)
                     .stroke(
                         AngularGradient(
                             gradient: Gradient(colors: [
-                                            Color.blue,
+                                Color.blue,
                             ]),
-                                        
-                        center: .center, startAngle: .degrees(180), endAngle: .degrees(360)),
+                            center: .center,
+                            startAngle: .degrees(180),
+                            endAngle: .degrees(360)
+                        ),
                         style: StrokeStyle(lineWidth: 20, lineCap: .round)
                     )
                     .rotationEffect(.degrees(180))
                     .frame(height: 150)
                     .animation(.easeOut(duration: 1.5), value: beta)
-                
-                // Graduations
                 ForEach(0..<4) { i in
                     VStack {
                         Text("\(i)")
@@ -699,22 +708,16 @@ struct ExoticBetaGauge: View {
                     .rotationEffect(.degrees(Double(i) * 60 - 90))
                     .frame(height: 190)
                 }
-                
-                // Aiguille
                 Rectangle()
                     .fill(colorZone)
                     .frame(width: 4, height: 80)
                     .offset(y: -30)
                     .rotationEffect(.degrees(normalizedBeta * 180 - 90))
                     .animation(.spring(response: 0.8, dampingFraction: 0.6), value: beta)
-                
-                // Centre de l'aiguille
                 Circle()
                     .fill(Color(nsColor: .windowBackgroundColor))
                     .frame(width: 20, height: 20)
                     .overlay(Circle().stroke(Color.gray, lineWidth: 2))
-                
-                // Texte descriptif en bas
                 VStack {
                     Spacer()
                     Text(riskText)
@@ -724,7 +727,7 @@ struct ExoticBetaGauge: View {
                         .shadow(color: colorZone.opacity(0.5), radius: 5)
                 }
             }
-            .frame(height: 110) // Coupe le bas du cercle
+            .frame(height: 110)
             .padding(.bottom, 10)
         }
         .padding()
@@ -740,116 +743,55 @@ struct PeersComparisonView: View {
     let mainTicker: String
     let mainPE: Double
     let peers: [PeerData]
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
                 Image(systemName: "person.3.fill").font(.title2).foregroundColor(.blue)
                 Text("Competitor Analysis (P/E)").font(.headline).foregroundColor(.secondary)
             }
-            
             if mainPE == 0 {
                 Text("Enter P/E to compare with peers").font(.caption).italic().foregroundColor(.secondary)
             } else {
                 Chart {
-                    // Main Ticker
-                    BarMark(
-                        x: .value("Ticker", mainTicker),
-                        y: .value("P/E", mainPE)
-                    )
-                    .foregroundStyle(Color.blue.gradient)
-                    .annotation(position: .top) {
-                        Text(String(format: "%.1f", mainPE)).font(.caption).bold()
-                    }
-                    
-                    // Peers
+                    BarMark(x: .value("Ticker", mainTicker), y: .value("P/E", mainPE))
+                        .foregroundStyle(Color.blue.gradient)
+                        .annotation(position: .top) { Text(String(format: "%.1f", mainPE)).font(.caption).bold() }
                     ForEach(peers) { peer in
-                        BarMark(
-                            x: .value("Ticker", peer.ticker),
-                            y: .value("P/E", peer.pe)
-                        )
-                        .foregroundStyle(Color.purple.opacity(0.3).gradient)
-                        .annotation(position: .top) {
-                            Text(String(format: "%.1f", peer.pe)).font(.caption).foregroundColor(.secondary)
-                        }
+                        BarMark(x: .value("Ticker", peer.ticker), y: .value("P/E", peer.pe))
+                            .foregroundStyle(Color.purple.opacity(0.3).gradient)
+                            .annotation(position: .top) { Text(String(format: "%.1f", peer.pe)).font(.caption).foregroundColor(.secondary) }
                     }
-                }
-                .frame(height: 200)
+                }.frame(height: 200)
             }
         }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
-// --- NEW CHART COMPONENT (HEIGHT INCREASED) ---
-
 struct PriceRangeChart: View {
-    var currentPrice: Double
-    var yearHigh: Double
-    var symbol: String
-    
-    var drawdown: Double {
-        guard yearHigh > 0 else { return 0.0 }
-        return ((currentPrice - yearHigh) / yearHigh) * 100.0
-    }
-    
-    struct BarData: Identifiable {
-        let id = UUID()
-        let label: String
-        let value: Double
-        let color: Color
-    }
-    
-    var data: [BarData] {
-        [
-            .init(label: "52W High", value: yearHigh, color: .gray.opacity(0.5)),
-            .init(label: "Current", value: currentPrice, color: .blue)
-        ]
-    }
-    
+    var currentPrice: Double; var yearHigh: Double; var symbol: String
+    var drawdown: Double { guard yearHigh > 0 else { return 0.0 }; return ((currentPrice - yearHigh) / yearHigh) * 100.0 }
+    struct BarData: Identifiable { let id = UUID(); let label: String; let value: Double; let color: Color }
+    var data: [BarData] { [ .init(label: "52W High", value: yearHigh, color: .gray.opacity(0.5)), .init(label: "Current", value: currentPrice, color: .blue) ] }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: "arrow.down.right.circle.fill").font(.title2).foregroundColor(.blue)
                 Text("Price vs 52-Week High").font(.headline).foregroundColor(.secondary)
                 Spacer()
-                if drawdown < -0.1 {
-                    Text("\(String(format: "%.1f", drawdown))%").font(.title3).bold().foregroundColor(.red)
-                }
+                if drawdown < -0.1 { Text("\(String(format: "%.1f", drawdown))%").font(.title3).bold().foregroundColor(.red) }
             }
-            
             Chart(data) { item in
-                BarMark(
-                    x: .value("Price", item.value),
-                    y: .value("Type", item.label)
-                )
-                .foregroundStyle(item.color.gradient)
-                .annotation(position: .trailing) {
-                    Text(String(format: "%.2f %@", item.value, symbol))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+                BarMark(x: .value("Price", item.value), y: .value("Type", item.label))
+                    .foregroundStyle(item.color.gradient)
+                    .annotation(position: .trailing) { Text(String(format: "%.2f %@", item.value, symbol)).font(.caption).foregroundColor(.secondary) }
             }
-            .frame(height: 160)
-            .chartXAxis { AxisMarks(position: .bottom) }
-            .chartYAxis { AxisMarks(position: .leading) }
-            
-            if drawdown < -20 {
-                Text("📉 Trading significantly below highs. Potential opportunity if fundamentals are intact.")
-                    .font(.caption).italic().foregroundColor(.secondary)
-            }
+            .frame(height: 160).chartXAxis { AxisMarks(position: .bottom) }.chartYAxis { AxisMarks(position: .leading) }
+            if drawdown < -20 { Text("📉 Trading significantly below highs. Potential opportunity if fundamentals are intact.").font(.caption).italic().foregroundColor(.secondary) }
         }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
-
-// --- EXISTING SUBVIEWS (unchanged logic) ---
 
 struct InfoButton: View {
     let helpText: String
@@ -858,81 +800,44 @@ struct InfoButton: View {
 }
 
 struct FinancialHealthView: View {
-    var cash: Double
-    var debt: Double
-    var fcfPerShare: Double
-    var growthRate: Double
-    var symbol: String
+    var cash: Double; var debt: Double; var fcfPerShare: Double; var growthRate: Double; var symbol: String
     var netCash: Double { cash - debt }
     var fcfProjections: [Double] {
-        var values: [Double] = []
-        var current = fcfPerShare
-        for _ in 1...5 {
-            current = current * (1 + growthRate / 100.0)
-            values.append(current)
-        }
+        var values: [Double] = []; var current = fcfPerShare
+        for _ in 1...5 { current = current * (1 + growthRate / 100.0); values.append(current) }
         return values
     }
     var body: some View {
         VStack(spacing: 20) {
-            HStack {
-                Image(systemName: "shield.checkerboard").font(.title2).foregroundColor(.blue)
-                Text("Risk & Growth Check").font(.headline).foregroundColor(.secondary)
-                Spacer()
-            }
+            HStack { Image(systemName: "shield.checkerboard").font(.title2).foregroundColor(.blue); Text("Risk & Growth Check").font(.headline).foregroundColor(.secondary); Spacer() }
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Balance Sheet").font(.caption).bold().foregroundColor(.secondary)
-                    if cash == 0 && debt == 0 {
-                        Text("Enter Cash & Debt").font(.caption).italic().foregroundColor(.secondary)
-                    } else {
+                    if cash == 0 && debt == 0 { Text("Enter Cash & Debt").font(.caption).italic().foregroundColor(.secondary) } else {
                         HStack(alignment: .bottom, spacing: 15) {
-                            VStack {
-                                Text(String(format: "%.1fB", cash)).font(.caption2)
-                                RoundedRectangle(cornerRadius: 6).fill(Color.green.gradient).frame(width: 30, height: 60 * (cash / max(cash, debt, 1.0)))
-                                Text("Cash").font(.tiny).bold()
-                            }
-                            VStack {
-                                Text(String(format: "%.1fB", debt)).font(.caption2)
-                                RoundedRectangle(cornerRadius: 6).fill(Color.red.gradient).frame(width: 30, height: 60 * (debt / max(cash, debt, 1.0)))
-                                Text("Debt").font(.tiny).bold()
-                            }
+                            VStack { Text(String(format: "%.1fB", cash)).font(.caption2); RoundedRectangle(cornerRadius: 6).fill(Color.green.gradient).frame(width: 30, height: 60 * (cash / max(cash, debt, 1.0))); Text("Cash").font(.tiny).bold() }
+                            VStack { Text(String(format: "%.1fB", debt)).font(.caption2); RoundedRectangle(cornerRadius: 6).fill(Color.red.gradient).frame(width: 30, height: 60 * (debt / max(cash, debt, 1.0))); Text("Debt").font(.tiny).bold() }
                         }.frame(height: 80)
                         Text(netCash >= 0 ? "Net Cash (Safe)" : "Net Debt (Leveraged)").font(.tiny).bold().foregroundColor(netCash >= 0 ? .green : .red).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
                     }
-                }
-                .padding().frame(maxWidth: .infinity).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+                }.padding().frame(maxWidth: .infinity).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Proj. FCF Growth (5Y)").font(.caption).bold().foregroundColor(.secondary)
                     if fcfPerShare > 0 {
                         HStack(alignment: .bottom, spacing: 8) {
-                            let data = fcfProjections
-                            let maxVal = (data.max() ?? 1.0) * 1.1
-                            ForEach(0..<5) { i in
-                                VStack(spacing: 2) {
-                                    Spacer()
-                                    RoundedRectangle(cornerRadius: 4).fill(Color.blue.gradient).frame(height: 60 * (data[i] / maxVal))
-                                    Text("\(Int(data[i]))").font(.system(size: 9))
-                                    Text("Y\(i+1)").font(.tiny).foregroundColor(.secondary)
-                                }
-                            }
+                            let data = fcfProjections; let maxVal = (data.max() ?? 1.0) * 1.1
+                            ForEach(0..<5) { i in VStack(spacing: 2) { Spacer(); RoundedRectangle(cornerRadius: 4).fill(Color.blue.gradient).frame(height: 60 * (data[i] / maxVal)); Text("\(Int(data[i]))").font(.system(size: 9)); Text("Y\(i+1)").font(.tiny).foregroundColor(.secondary) } }
                         }.frame(height: 80)
                         Text("CAGR: \(String(format: "%.1f", growthRate))%").font(.tiny).bold().foregroundColor(growthRate > 0 ? .green : .red).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
-                    } else {
-                        Text("Enter Positive FCF").font(.caption).italic().foregroundColor(.secondary)
-                    }
-                }
-                .padding().frame(maxWidth: .infinity).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+                    } else { Text("Enter Positive FCF").font(.caption).italic().foregroundColor(.secondary) }
+                }.padding().frame(maxWidth: .infinity).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
             }
         }
     }
 }
 
 struct BuyBoxView: View {
-    var intrinsicValue: Double
-    var currentPrice: Double
-    @Binding var marginOfSafety: Double
-    var symbol: String
+    var intrinsicValue: Double; var currentPrice: Double; @Binding var marginOfSafety: Double; var symbol: String
     var targetBuyPrice: Double { intrinsicValue * (1.0 - (marginOfSafety / 100.0)) }
     var isBuyable: Bool { currentPrice > 0 && currentPrice <= targetBuyPrice }
     var body: some View {
@@ -945,18 +850,11 @@ struct BuyBoxView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text("Margin of Safety").font(.caption).bold().foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(marginOfSafety))%").font(.body).bold().foregroundColor(.blue)
-                }
+                HStack { Text("Margin of Safety").font(.caption).bold().foregroundColor(.secondary); Spacer(); Text("\(Int(marginOfSafety))%").font(.body).bold().foregroundColor(.blue) }
                 Slider(value: $marginOfSafety, in: 0...60, step: 5).tint(.blue)
             }
             HStack(alignment: .bottom) {
-                VStack(alignment: .leading) {
-                    Text("Target Buy Price").font(.caption).foregroundColor(.secondary)
-                    Text(String(format: "%.2f %@", targetBuyPrice, symbol)).font(.system(size: 32, weight: .bold)).foregroundColor(isBuyable ? .green : .primary)
-                }
+                VStack(alignment: .leading) { Text("Target Buy Price").font(.caption).foregroundColor(.secondary); Text(String(format: "%.2f %@", targetBuyPrice, symbol)).font(.system(size: 32, weight: .bold)).foregroundColor(isBuyable ? .green : .primary) }
                 Spacer()
                 if currentPrice > 0 {
                     VStack(alignment: .trailing) {
@@ -966,8 +864,7 @@ struct BuyBoxView: View {
                     }
                 }
             }
-        }
-        .padding().background(ZStack { Color(nsColor: .controlBackgroundColor); if isBuyable { Color.green.opacity(0.05) } }).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isBuyable ? Color.green : Color.gray.opacity(0.2), lineWidth: isBuyable ? 2 : 1))
+        }.padding().background(ZStack { Color(nsColor: .controlBackgroundColor); if isBuyable { Color.green.opacity(0.05) } }).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isBuyable ? Color.green : Color.gray.opacity(0.2), lineWidth: isBuyable ? 2 : 1))
     }
 }
 
@@ -1023,10 +920,7 @@ struct SensitivityMatrixView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            HStack {
-                Image(systemName: "tablecells").font(.title2).foregroundColor(.blue)
-                Text("Sensitivity Matrix (7x7 Heatmap)").font(.headline).foregroundColor(.secondary)
-            }
+            HStack { Image(systemName: "tablecells").font(.title2).foregroundColor(.blue); Text("Sensitivity Matrix (7x7 Heatmap)").font(.headline).foregroundColor(.secondary) }
             Grid(horizontalSpacing: 4, verticalSpacing: 4) {
                 GridRow {
                     Text("Disc. \\ Grwth").font(.caption2).foregroundColor(.secondary).frame(width: 70, alignment: .leading)
@@ -1049,22 +943,13 @@ struct SensitivityMatrixView: View {
 struct PEComparisonChart: View {
     var currentPE: Double; var historicalPE: Double; var exitMultiple: Double
     var data: [PEDataPoint] {
-        [.init(type: "Historical", value: historicalPE, color: .gray.opacity(0.5)),
-         .init(type: "Current", value: currentPE, color: .gray),
-         .init(type: "Exit (Yr 5)", value: exitMultiple, color: .blue)]
+        [.init(type: "Historical", value: historicalPE, color: .gray.opacity(0.5)), .init(type: "Current", value: currentPE, color: .gray), .init(type: "Exit (Yr 5)", value: exitMultiple, color: .blue)]
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            HStack {
-                Image(systemName: "chart.bar.xaxis").font(.title2).foregroundColor(.blue)
-                Text("Valuation Reality Check (P/E Ratios)").font(.headline).foregroundColor(.secondary)
-            }
-            if currentPE == 0 && historicalPE == 0 && exitMultiple == 0 {
-                Text("Enter P/E data to visualize comparison").font(.caption).italic().foregroundColor(.secondary)
-            } else {
-                Chart(data) { point in
-                    BarMark(x: .value("Type", point.type), y: .value("P/E Ratio", point.value)).foregroundStyle(point.color.gradient).annotation(position: .top) { Text(String(format: "%.1fx", point.value)).font(.caption).bold() }
-                }.frame(height: 200)
+            HStack { Image(systemName: "chart.bar.xaxis").font(.title2).foregroundColor(.blue); Text("Valuation Reality Check (P/E Ratios)").font(.headline).foregroundColor(.secondary) }
+            if currentPE == 0 && historicalPE == 0 && exitMultiple == 0 { Text("Enter P/E data to visualize comparison").font(.caption).italic().foregroundColor(.secondary) } else {
+                Chart(data) { point in BarMark(x: .value("Type", point.type), y: .value("P/E Ratio", point.value)).foregroundStyle(point.color.gradient).annotation(position: .top) { Text(String(format: "%.1fx", point.value)).font(.caption).bold() } }.frame(height: 200)
             }
         }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
@@ -1078,11 +963,7 @@ struct PEGRatioGauge: View {
     var statusColor: Color { peg < 1.0 ? .green : peg < 1.5 ? .yellow : .red }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "gauge.with.needle").font(.title2).foregroundColor(.blue)
-                Text("PEG Ratio (Lynch Valuation)").font(.headline).foregroundColor(.secondary)
-                Spacer(); Text(String(format: "%.2f", peg)).font(.title2).bold().foregroundColor(statusColor)
-            }
+            HStack { Image(systemName: "gauge.with.needle").font(.title2).foregroundColor(.blue); Text("PEG Ratio (Lynch Valuation)").font(.headline).foregroundColor(.secondary); Spacer(); Text(String(format: "%.2f", peg)).font(.title2).bold().foregroundColor(statusColor) }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle().fill(LinearGradient(stops: [.init(color: .green.opacity(0.8), location: 0.0), .init(color: .green.opacity(0.8), location: 0.33), .init(color: .yellow, location: 0.33), .init(color: .yellow, location: 0.5), .init(color: .red.opacity(0.8), location: 0.5), .init(color: .red.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10)
@@ -1096,69 +977,23 @@ struct PEGRatioGauge: View {
 }
 
 struct FCFYieldGauge: View {
-    var fcfPerShare: Double
-    var currentPrice: Double
-    var yield: Double {
-        guard currentPrice > 0 else { return 0.0 }
-        return (fcfPerShare / currentPrice) * 100.0
-    }
-    var yieldProgress: CGFloat {
-        let clamped = min(max(yield, 0.0), 10.0)
-        return CGFloat(clamped / 10.0)
-    }
-    var statusText: String {
-        if yield < 3.0 { return "Expensive (<3%)" }
-        else if yield < 7.0 { return "Fair (3-7%)" }
-        else { return "Attractive (>7%)" }
-    }
-    var statusColor: Color {
-        if yield < 3.0 { return .red }
-        else if yield < 7.0 { return .yellow }
-        else { return .green }
-    }
+    var fcfPerShare: Double; var currentPrice: Double
+    var yield: Double { guard currentPrice > 0 else { return 0.0 }; return (fcfPerShare / currentPrice) * 100.0 }
+    var yieldProgress: CGFloat { let clamped = min(max(yield, 0.0), 10.0); return CGFloat(clamped / 10.0) }
+    var statusText: String { if yield < 3.0 { return "Expensive (<3%)" } else if yield < 7.0 { return "Fair (3-7%)" } else { return "Attractive (>7%)" } }
+    var statusColor: Color { if yield < 3.0 { return .red } else if yield < 7.0 { return .yellow } else { return .green } }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "banknote.fill").font(.title2).foregroundColor(.blue)
-                Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.secondary)
-                Spacer()
-                Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor)
-            }
+            HStack { Image(systemName: "banknote.fill").font(.title2).foregroundColor(.green); Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.blue); Spacer(); Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor) }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Rectangle().fill(LinearGradient(stops: [
-                        .init(color: .red.opacity(0.8), location: 0.0),
-                        .init(color: .red.opacity(0.8), location: 0.3),
-                        .init(color: .yellow, location: 0.3),
-                        .init(color: .yellow, location: 0.7),
-                        .init(color: .green.opacity(0.8), location: 0.7),
-                        .init(color: .green.opacity(0.8), location: 1.0)
-                    ], startPoint: .leading, endPoint: .trailing))
-                    .frame(height: 20).cornerRadius(10)
-                    
-                    Image(systemName: "arrowtriangle.down.fill")
-                        .foregroundColor(.primary)
-                        .font(.title3)
-                        .offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: -20)
-                    
-                    Text(statusText)
-                        .font(.caption2).bold().foregroundColor(statusColor)
-                        .offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: 22)
-                        .fixedSize()
+                    Rectangle().fill(LinearGradient(stops: [.init(color: .red.opacity(0.8), location: 0.0), .init(color: .red.opacity(0.8), location: 0.3), .init(color: .yellow, location: 0.3), .init(color: .yellow, location: 0.7), .init(color: .green.opacity(0.8), location: 0.7), .init(color: .green.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10)
+                    Image(systemName: "arrowtriangle.down.fill").foregroundColor(.primary).font(.title3).offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: -20)
+                    Text(statusText).font(.caption2).bold().foregroundColor(statusColor).offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: 22).fixedSize()
                 }
             }.frame(height: 50)
-            HStack {
-                Text("0%").font(.tiny)
-                Spacer()
-                Text("5% (Avg)").font(.tiny)
-                Spacer()
-                Text("10%+").font(.tiny)
-            }.foregroundColor(.gray)
-        }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            HStack { Text("0%").font(.tiny); Spacer(); Text("5% (Avg)").font(.tiny); Spacer(); Text("10%+").font(.tiny) }.foregroundColor(.gray)
+        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1195,26 +1030,15 @@ struct ProjectedGrowthChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Image(systemName: "chart.line.uptrend.xyaxis").font(.title2).foregroundColor(.blue)
-                    Text("Value Projection vs Price").font(.headline).foregroundColor(.secondary)
-                }
-                HStack(spacing: 15) {
-                    HStack(spacing: 5) { Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption); Text("Intrinsic Value").font(.caption).bold() }
-                    HStack(spacing: 5) { Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption); Text("Current Price").font(.caption).bold() }
-                }
+                HStack { Image(systemName: "chart.line.uptrend.xyaxis").font(.title2).foregroundColor(.blue); Text("Value Projection vs Price").font(.headline).foregroundColor(.secondary) }
+                HStack(spacing: 15) { HStack(spacing: 5) { Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption); Text("Intrinsic Value").font(.caption).bold() }; HStack(spacing: 5) { Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption); Text("Current Price").font(.caption).bold() } }
             }
             Chart {
                 RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5])).annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))\(symbol)").font(.caption2).foregroundColor(.red) }
-                ForEach(data) { point in
-                    LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone)
-                    PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60)
-                }
+                ForEach(data) { point in LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone); PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60) }
                 if let selectedYear {
                     RuleMark(x: .value("Year", selectedYear)).foregroundStyle(Color.gray.opacity(0.3)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
-                        if let point = data.first(where: { $0.year == selectedYear }) {
-                            VStack(alignment: .leading, spacing: 4) { Text("Year \(point.year)").font(.caption).bold().foregroundColor(.secondary); Text("Value: \(Int(point.value)) \(symbol)").font(.caption).bold().foregroundColor(.blue) }.padding(6).background(.regularMaterial).cornerRadius(6).shadow(radius: 2)
-                        }
+                        if let point = data.first(where: { $0.year == selectedYear }) { VStack(alignment: .leading, spacing: 4) { Text("Year \(point.year)").font(.caption).bold().foregroundColor(.secondary); Text("Value: \(Int(point.value)) \(symbol)").font(.caption).bold().foregroundColor(.blue) }.padding(6).background(.regularMaterial).cornerRadius(6).shadow(radius: 2) }
                     }
                 }
             }.chartYScale(domain: yDomain).chartXSelection(value: $selectedYear).chartXScale(domain: 0...5).frame(height: 250)
