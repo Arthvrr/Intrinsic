@@ -1,29 +1,75 @@
 import SwiftUI
 import Charts
 
-// --- DATA STRUCTURES (CHART) ---
-struct YahooResponse: Codable { let chart: YahooChart }
-struct YahooChart: Codable { let result: [YahooResult]?; let error: YahooError? }
-struct YahooError: Codable { let description: String? }
-struct YahooResult: Codable { let meta: YahooMeta }
-struct YahooMeta: Codable {
-    let symbol: String
-    let currency: String?
-    let regularMarketPrice: Double?
-    let previousClose: Double?
-    let chartPreviousClose: Double?
+// --- MODELS DONNÉES (Sendable pour Swift 6) ---
+
+struct FinnhubQuote: Codable, Sendable {
+    let c: Double // Current Price (En USD pour les ADR)
 }
 
-// --- DATA STRUCTURES (QUOTE) ---
-struct YahooQuoteResponse: Codable { let quoteResponse: QuoteResult }
-struct QuoteResult: Codable { let result: [QuoteDetail]?; let error: YahooError? }
-struct QuoteDetail: Codable {
-    let symbol: String
-    let regularMarketPrice: Double?
-    let currency: String?
-    let trailingPE: Double?
-    let forwardPE: Double?
+struct FinnhubMetricResponse: Codable, Sendable {
+    let metric: FinnhubMetricData
+    let series: FinnhubSeries?
 }
+
+struct FinnhubSeries: Codable, Sendable {
+    let annual: FinnhubSeriesAnnual?
+}
+
+struct FinnhubSeriesAnnual: Codable, Sendable {
+    let pe: [FinnhubSeriesDataPoint]?
+    let freeCashFlow: [FinnhubSeriesDataPoint]?
+    
+    private enum CodingKeys: String, CodingKey {
+        case pe
+        case freeCashFlow
+    }
+}
+
+struct FinnhubSeriesDataPoint: Codable, Sendable {
+    let period: String?
+    let v: Double?
+}
+
+// Modèle pour ExchangeRate-API
+struct ExchangeRateResponse: Codable, Sendable {
+    let conversion_rates: [String: Double]
+    let result: String
+}
+
+struct FinnhubMetricData: Codable, Sendable {
+    let cashAndEquivalentsAnnual: Double?
+    let totalDebtAnnual: Double?
+    let freeCashFlowTTM: Double?
+    let peTTM: Double?
+    let yearHigh: Double?
+    
+    let pfcfShareTTM: Double?
+    let cashPerSharePerShareAnnual: Double?
+    let bookValuePerShareAnnual: Double?
+    let totalDebtToEquityAnnual: Double?
+    
+    private enum CodingKeys: String, CodingKey {
+        case cashAndEquivalentsAnnual
+        case totalDebtAnnual
+        case freeCashFlowTTM
+        case peTTM
+        case yearHigh = "52WeekHigh"
+        case pfcfShareTTM
+        case cashPerSharePerShareAnnual
+        case bookValuePerShareAnnual
+        case totalDebtToEquityAnnual = "totalDebt/totalEquityAnnual"
+    }
+}
+
+struct FinnhubProfile: Codable, Sendable {
+    let shareOutstanding: Double?
+    let currency: String?
+    let ticker: String?
+    let exchange: String?
+}
+
+// --- APP ENUMS & STRUCTS ---
 
 enum ValuationMethod: String, CaseIterable, Identifiable {
     case gordon = "Conservative (Perpetual)"
@@ -44,47 +90,228 @@ struct PEDataPoint: Identifiable {
     let color: Color
 }
 
+// --- FINNHUB SERVICE (CONVERSION TOTALE ADR) ---
+
+actor FinnhubService {
+    private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0"
+    private let exchangeRateApiKey = "2d3a18191c2ffd303066358c" // TA CLÉ ExchangeRate-API
+    
+    struct StockData: Sendable {
+        let price: Double
+        let currency: String
+        let sharesOutstandingB: Double
+        let cashB: Double
+        let debtB: Double
+        let fcfPerShare: Double
+        let peCurrent: Double
+        let peHistoricalAvg: Double
+        let yearHigh: Double
+        let fcfCagr: Double?
+    }
+    
+    private func fetchAndDecode<T: Codable>(url: URL, type: T.Type, label: String) async throws -> T {
+        // print("🚀 [\(label)] Fetching: \(url.absoluteString)")
+        let (data, _) = try await URLSession.shared.data(from: url)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .useDefaultKeys
+        return try decoder.decode(T.self, from: data)
+    }
+    
+    // Fonction pour récupérer le taux de change (Devise Locale -> USD)
+    private func fetchConversionRateToUSD(from sourceCurrency: String) async -> Double {
+        if sourceCurrency == "USD" { return 1.0 }
+        
+        guard let url = URL(string: "https://v6.exchangerate-api.com/v6/\(exchangeRateApiKey)/latest/\(sourceCurrency)") else {
+            return 1.0
+        }
+        
+        do {
+            let response = try await fetchAndDecode(url: url, type: ExchangeRateResponse.self, label: "FOREX")
+            if response.result == "success", let rate = response.conversion_rates["USD"] {
+                print("✅ Taux ExchangeRate trouvé: 1 \(sourceCurrency) = \(rate) USD")
+                return rate
+            }
+        } catch {
+            print("❌ Erreur Forex: \(error)")
+        }
+        return 1.0
+    }
+    
+    func fetchStockData(symbol: String) async throws -> StockData {
+        print("\n--- 🟢 DÉBUT ANALYSE : \(symbol) ---")
+        let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        
+        let quoteURL = URL(string: "https://finnhub.io/api/v1/quote?symbol=\(cleanSymbol)&token=\(finnhubApiKey)")!
+        let metricURL = URL(string: "https://finnhub.io/api/v1/stock/metric?symbol=\(cleanSymbol)&metric=all&token=\(finnhubApiKey)")!
+        let profileURL = URL(string: "https://finnhub.io/api/v1/stock/profile2?symbol=\(cleanSymbol)&token=\(finnhubApiKey)")!
+        
+        async let quote = fetchAndDecode(url: quoteURL, type: FinnhubQuote.self, label: "QUOTE")
+        async let metricsResp = fetchAndDecode(url: metricURL, type: FinnhubMetricResponse.self, label: "METRICS")
+        async let profile = fetchAndDecode(url: profileURL, type: FinnhubProfile.self, label: "PROFILE")
+        
+        let quoteResult = try await quote
+        let metricsResult = try await metricsResp
+        let profileResult = try? await profile
+        let m = metricsResult.metric
+        
+        // --- DONNÉES BRUTES ---
+        // Hypothèse ADR : Le prix (Quote) est déjà en USD car c'est le ticker US.
+        let priceUSD = quoteResult.c
+        
+        let sharesM = profileResult?.shareOutstanding ?? 0.0
+        let sharesB = sharesM / 1000.0
+        let profileCurrency = profileResult?.currency?.uppercased() ?? "USD"
+        
+        print("📊 Info: PrixTicker=\(priceUSD) USD, DeviseComptable=\(profileCurrency)")
+        
+        // --- PRÉPARATION DU TAUX DE CONVERSION ---
+        var conversionRate = 1.0
+        if profileCurrency != "USD" {
+             print("⚠️ ADR/Devise étrangère détectée (\(profileCurrency)). Conversion des fondamentaux en USD requise.")
+             conversionRate = await fetchConversionRateToUSD(from: profileCurrency)
+        }
+        
+        // --- APPLICATION DE LA CONVERSION AUX FONDAMENTAUX (Metric) ---
+        // On multiplie tout ce qui vient de 'metric' par le taux, car c'est en devise locale.
+        
+        // 1. FCF (Conversion)
+        var finalFCFPerShare = 0.0
+        if let fcfTotal = m.freeCashFlowTTM {
+            finalFCFPerShare = sharesM > 0 ? (fcfTotal / sharesM) : 0.0
+        } else if let priceToFcf = m.pfcfShareTTM, priceToFcf > 0 {
+            // Ici c'est tricky : le ratio Price/FCF est sans unité.
+            // Si on déduit le FCF via le Prix (USD) / Ratio, on obtient du USD directement.
+            // Mais si on utilise le FCF total (DKK) / Shares, on a du DKK.
+            // Priorité au calcul direct :
+            if let rawFCF = m.freeCashFlowTTM {
+                 finalFCFPerShare = (rawFCF / sharesM) * conversionRate
+            } else {
+                 // Fallback via ratio (déjà en USD via le prix)
+                 finalFCFPerShare = priceUSD / priceToFcf
+            }
+        }
+        // Si on a utilisé le calcul brut, on s'assure qu'il est converti.
+        // (Logique simplifiée : si on a appliqué le rate ligne 146, c'est bon).
+        // On refait le calcul propre :
+        if let fcfTotal = m.freeCashFlowTTM {
+             let fcfPerShareNative = sharesM > 0 ? (fcfTotal / sharesM) : 0.0
+             finalFCFPerShare = fcfPerShareNative * conversionRate
+        }
+        
+        // 2. Cash (Conversion)
+        var finalCashB = 0.0
+        if let cashTotalM = m.cashAndEquivalentsAnnual {
+            finalCashB = (cashTotalM / 1000.0) * conversionRate
+        } else if let cashPerShare = m.cashPerSharePerShareAnnual {
+            // cashPerShare est en DKK
+            finalCashB = ((cashPerShare * sharesM) / 1000.0) * conversionRate
+        }
+        
+        // 3. Debt (Conversion)
+        var finalDebtB = 0.0
+        if let debtTotalM = m.totalDebtAnnual {
+            finalDebtB = (debtTotalM / 1000.0) * conversionRate
+        } else if let debtToEquity = m.totalDebtToEquityAnnual, let bookVal = m.bookValuePerShareAnnual {
+            // BookVal est en DKK
+            let totalEquityM = sharesM * bookVal
+            let totalDebtM = totalEquityM * debtToEquity
+            finalDebtB = (totalDebtM / 1000.0) * conversionRate
+        }
+        
+        // 4. 52-Week High (Conversion)
+        let rawHigh = m.yearHigh ?? 0.0
+        // Si rawHigh est 0 (pas de donnée), on fallback sur le prix actuel
+        let convertedHigh = (rawHigh > 0 ? rawHigh : priceUSD) * conversionRate
+        
+        // Sécurité : High ne peut pas être plus bas que le prix actuel (en USD)
+        // Mais attention, si conversionRate est 1.0 (USD), convertedHigh = rawHigh.
+        // Si conversionRate < 1 (DKK->USD), convertedHigh devient petit (~100).
+        let adjustedHigh = max(convertedHigh, priceUSD)
+        
+        print("📈 High: Brut=\(rawHigh) \(profileCurrency) -> Converti=\(convertedHigh) USD")
+
+        // 5. PE Historique (Ratio sans unité, pas de conversion nécessaire sauf si incohérence)
+        // On suppose que Finnhub calcule le PE correctement (Prix / EPS) dans la même devise.
+        var avgPE = 0.0
+        if let seriesPE = metricsResult.series?.annual?.pe {
+            let validPEs = seriesPE.compactMap { $0.v }.filter { $0 > 0 }
+            let recentPEs = validPEs.prefix(5)
+            if !recentPEs.isEmpty {
+                avgPE = recentPEs.reduce(0, +) / Double(recentPEs.count)
+            }
+        } else {
+            avgPE = m.peTTM ?? 0.0
+        }
+        
+        // 6. CAGR (Pourcentage, pas de conversion)
+        var calculatedCagr: Double? = nil
+        if let seriesFCF = metricsResult.series?.annual?.freeCashFlow {
+            let sortedFCF = seriesFCF.sorted { ($0.period ?? "") < ($1.period ?? "") }
+            if sortedFCF.count >= 2 {
+                let lookback = min(5, sortedFCF.count - 1)
+                let startFCF = sortedFCF[sortedFCF.count - 1 - lookback].v ?? 0.0
+                let endFCF = sortedFCF.last?.v ?? 0.0
+                if startFCF > 0 && endFCF > 0 {
+                    let n = Double(lookback)
+                    let cagr = pow(endFCF / startFCF, 1.0 / n) - 1.0
+                    calculatedCagr = cagr * 100.0
+                }
+            }
+        }
+        
+        return StockData(
+            price: priceUSD, // On garde le prix du Ticker (USD)
+            currency: "USD",
+            sharesOutstandingB: sharesB,
+            cashB: finalCashB, // Converti
+            debtB: finalDebtB, // Converti
+            fcfPerShare: finalFCFPerShare, // Converti
+            peCurrent: m.peTTM ?? 0.0,
+            peHistoricalAvg: avgPE,
+            yearHigh: adjustedHigh, // Converti
+            fcfCagr: calculatedCagr
+        )
+    }
+}
+
 // --- MAIN VIEW ---
 
 struct ContentView: View {
-    // --- STATES ---
     @State private var ticker: String = "NVDA"
     @State private var priceDisplay: String = "---"
     @State private var isLoading = false
     @State private var currentPrice: Double = 0.0
+    @State private var yearHigh: Double = 0.0
     @State private var currencySymbol: String = "$"
     @State private var isSidebarVisible: Bool = true
 
-    // Inputs (Fundamentals)
     @State private var fcfInput: String = "0.00"
     @State private var sharesInput: String = "0.00"
     @State private var cashInput: String = "0.00"
     @State private var debtInput: String = "0.00"
-
-    // Inputs (P/E Context) - MANUEL
     @State private var currentPEInput: String = "0.00"
     @State private var historicalPEInput: String = "0.00"
+    @State private var fcfCagrDisplay: String? = nil
 
-    // Estimates
     @State private var growthRate: Double = 0.0
     @State private var discountRate: Double = 0.0
     @State private var exitMultiple: Double = 0.0
     
-    // Method & Safety
     @State private var selectedMethod: ValuationMethod = .multiples
     @State private var terminalGrowth: Double = 0.0
     @State private var marginOfSafety: Double = 10.0
     
-    // Results
     @State private var intrinsicValue: Double = 0.0
     @State private var marketImpliedGrowth: Double = 0.0
     @State private var projectionData: [ProjectionPoint] = []
     @State private var hasCalculated: Bool = false
+    
+    private let finnhubService = FinnhubService()
 
     var body: some View {
         HStack(spacing: 0) {
             
-            // --- LEFT COLUMN (Sidebar) ---
+            // SIDEBAR
             if isSidebarVisible {
                 VStack(spacing: 0) {
                     HStack {
@@ -100,8 +327,8 @@ struct ContentView: View {
                     Form {
                         Section(header: Text("Search")) {
                             HStack {
-                                TextField("Ticker", text: $ticker).onSubmit { fetchPrice() }
-                                Button("Load") { fetchPrice() }
+                                TextField("Ticker", text: $ticker).onSubmit { fetchFinnhubData() }
+                                Button("Load") { fetchFinnhubData() }
                             }
                             HStack {
                                 Text("Current Price:"); Spacer()
@@ -109,27 +336,41 @@ struct ContentView: View {
                                 Text(priceDisplay).bold()
                             }
                         }
-                       
-                        Section(header: Text("Fundamentals"), footer: stockAnalysisLink) {
-                            inputRowString(label: "FCF / Share", value: $fcfInput, helpText: "Free Cash Flow per share")
+                        
+                        Section(header: Text("Fundamentals (USD)"), footer: stockAnalysisLink) {
+                            inputRowString(label: "FCF / Share", value: $fcfInput, helpText: "Free Cash Flow per share (Converted)")
                             inputRowString(label: "Shares (B)", value: $sharesInput, helpText: "Total shares outstanding (Billions)")
-                            inputRowString(label: "Cash (B)", value: $cashInput, helpText: "Total Cash & Equivalents (Billions)")
-                            inputRowString(label: "Debt (B)", value: $debtInput, helpText: "Total Debt (Billions)")
+                            inputRowString(label: "Cash (B)", value: $cashInput, helpText: "Total Cash & Equivalents (Billions USD)")
+                            inputRowString(label: "Debt (B)", value: $debtInput, helpText: "Total Debt (Billions USD)")
                         }
-                       
+                        
                         Section(header: Text("P/E Ratios (Context)"), footer: guruFocusLink) {
                             inputRowString(label: "Current P/E", value: $currentPEInput, helpText: "Enter the current P/E manually")
-                            inputRowString(label: "Historical P/E", value: $historicalPEInput, helpText: "Enter the 5-10y average P/E manually")
+                            inputRowString(label: "Historical P/E (5Y)", value: $historicalPEInput, helpText: "5-Year Average P/E Ratio")
                         }
-                       
+                        
                         Section(header: Text("Estimates")) {
+                            if let cagr = fcfCagrDisplay {
+                                HStack {
+                                    Text("Hist. 5Y FCF CAGR:")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text(cagr)
+                                        .font(.caption)
+                                        .bold()
+                                        .foregroundColor(.blue)
+                                }
+                                .padding(.bottom, 2)
+                            }
+                            
                             inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
                             inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in %")
                             inputRowDouble(label: "Exit Multiple", value: $exitMultiple, suffix: "x", helpText: "Expected P/E ratio in 5 years")
                         }
                     }
                     .formStyle(.grouped)
-              
+            
                     Divider()
                     Button(action: { calculateIntrinsicValue() }) {
                         Text("CALCULATE").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
@@ -141,7 +382,7 @@ struct ContentView: View {
             
             if isSidebarVisible { Divider() }
             
-            // --- RIGHT COLUMN (Results) ---
+            // MAIN CONTENT
             ZStack(alignment: .topLeading) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
             
@@ -149,27 +390,27 @@ struct ContentView: View {
                     VStack(spacing: 30) {
                         ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
                             .padding(.top, 40)
-                       
+                        
                         if hasCalculated && currentPrice > 0 {
                             ReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.horizontal)
                         }
-                       
+                        
                         if hasCalculated && currentPrice > 0 {
                             ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
                                 .frame(height: 180).padding(.horizontal)
                         }
-                       
+                        
                         if !projectionData.isEmpty && hasCalculated {
                             ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.horizontal)
                         }
-                       
+                        
                         if hasCalculated {
                             SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
                                 .padding(.horizontal)
                         }
-                       
+                        
                         if hasCalculated {
                             FinancialHealthView(
                                 cash: parseDouble(cashInput),
@@ -180,7 +421,7 @@ struct ContentView: View {
                             )
                             .padding(.horizontal)
                         }
-                       
+                        
                         if hasCalculated {
                             PEComparisonChart(
                                 currentPE: parseDouble(currentPEInput),
@@ -188,7 +429,7 @@ struct ContentView: View {
                                 exitMultiple: exitMultiple
                             )
                             .padding(.horizontal)
-                           
+                            
                             if parseDouble(currentPEInput) > 0 && growthRate > 0 {
                                 PEGRatioGauge(
                                     currentPE: parseDouble(currentPEInput),
@@ -197,7 +438,6 @@ struct ContentView: View {
                                 .padding(.horizontal)
                             }
                             
-                            // --- AJOUT : JAUGE FCF YIELD ---
                             if parseDouble(fcfInput) > 0 && currentPrice > 0 {
                                 FCFYieldGauge(
                                     fcfPerShare: parseDouble(fcfInput),
@@ -206,7 +446,7 @@ struct ContentView: View {
                                 .padding(.horizontal)
                             }
                         }
-                       
+                        
                         if hasCalculated && intrinsicValue > 0 {
                             BuyBoxView(
                                 intrinsicValue: intrinsicValue,
@@ -215,14 +455,19 @@ struct ContentView: View {
                                 symbol: currencySymbol
                             )
                             .padding(.horizontal)
-                            .padding(.bottom, 50)
+                            
+                            if yearHigh > 0 {
+                                PriceRangeChart(currentPrice: currentPrice, yearHigh: yearHigh, symbol: currencySymbol)
+                                    .padding(.horizontal)
+                                    .padding(.bottom, 50)
+                            }
                         } else {
                             Color.clear.frame(height: 50)
                         }
                     }
                     .frame(maxWidth: .infinity).padding(.horizontal, 20)
                 }
-              
+            
                 if !isSidebarVisible {
                     Button(action: { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isSidebarVisible = true } }) {
                         Image(systemName: "sidebar.right").font(.title2).foregroundColor(.primary).padding(10).background(.regularMaterial).cornerRadius(8)
@@ -233,6 +478,48 @@ struct ContentView: View {
     }
     
     // --- LOGIC ---
+    
+    func fetchFinnhubData() {
+        let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !cleanTicker.isEmpty else { return }
+        
+        isLoading = true
+        priceDisplay = "Loading..."
+        
+        Task {
+            do {
+                let data = try await finnhubService.fetchStockData(symbol: cleanTicker)
+                
+                await MainActor.run {
+                    self.currentPrice = data.price
+                    self.yearHigh = data.yearHigh
+                    self.currencySymbol = getCurrencySymbol(code: data.currency)
+                    self.priceDisplay = String(format: "%.2f %@", data.price, self.currencySymbol)
+                    
+                    self.fcfInput = String(format: "%.2f", data.fcfPerShare)
+                    self.sharesInput = String(format: "%.3f", data.sharesOutstandingB)
+                    self.cashInput = String(format: "%.2f", data.cashB)
+                    self.debtInput = String(format: "%.2f", data.debtB)
+                    self.currentPEInput = String(format: "%.2f", data.peCurrent)
+                    self.historicalPEInput = String(format: "%.2f", data.peHistoricalAvg)
+                    
+                    if let cagr = data.fcfCagr {
+                        self.fcfCagrDisplay = String(format: "%.1f%%", cagr)
+                    } else {
+                        self.fcfCagrDisplay = nil
+                    }
+                    
+                    self.isLoading = false
+                }
+            } catch {
+                print("❌ ERREUR FETCH : \(error)")
+                await MainActor.run {
+                    self.isLoading = false
+                    self.priceDisplay = "Error"
+                }
+            }
+        }
+    }
     
     var stockAnalysisLink: some View {
         let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -261,7 +548,7 @@ struct ContentView: View {
             g: growthRate, r: discountRate, method: selectedMethod, tg: terminalGrowth, exitMult: exitMultiple
         )
         if currentPrice > 0 { self.marketImpliedGrowth = solveReverseDCF(targetPrice: currentPrice) }
-       
+        
         var newProjections: [ProjectionPoint] = []
         var projectedValue = result
         newProjections.append(ProjectionPoint(year: 0, value: result))
@@ -269,7 +556,7 @@ struct ContentView: View {
             projectedValue = projectedValue * (1 + (growthRate / 100.0))
             newProjections.append(ProjectionPoint(year: i, value: projectedValue))
         }
-       
+        
         withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
             self.intrinsicValue = result
             self.projectionData = newProjections
@@ -306,26 +593,6 @@ struct ContentView: View {
         switch code { case "EUR": return "€"; case "GBP": return "£"; case "JPY": return "¥"; case "CNY": return "¥"; case "INR": return "₹"; case "CAD": return "C$"; case "AUD": return "A$"; default: return "$" }
     }
     
-    func fetchPrice() {
-        let clean = ticker.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\"", with: "").uppercased()
-        guard !clean.isEmpty, let url = URL(string: "https://query1.finance.yahoo.com/v8/finance/chart/\(clean)?interval=1d") else { return }
-        isLoading = true
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            defer { DispatchQueue.main.async { isLoading = false } }
-            if let data = data, let resp = try? JSONDecoder().decode(YahooResponse.self, from: data), let res = resp.chart.result?.first {
-                let p = res.meta.regularMarketPrice ?? res.meta.previousClose ?? 0.0
-                let currencyCode = res.meta.currency ?? "USD"
-                let sym = getCurrencySymbol(code: currencyCode)
-              
-                DispatchQueue.main.async {
-                    self.currentPrice = p
-                    self.currencySymbol = sym
-                    self.priceDisplay = String(format: "%.2f %@", p, sym)
-                }
-            }
-        }.resume()
-    }
-    
     func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View {
         HStack { Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8); InfoButton(helpText: helpText); Spacer(); TextField("0", text: value).textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing) }
     }
@@ -334,7 +601,72 @@ struct ContentView: View {
     }
 }
 
-// --- SUBVIEWS ---
+// --- NEW CHART COMPONENT (HEIGHT INCREASED) ---
+
+struct PriceRangeChart: View {
+    var currentPrice: Double
+    var yearHigh: Double
+    var symbol: String
+    
+    var drawdown: Double {
+        guard yearHigh > 0 else { return 0.0 }
+        return ((currentPrice - yearHigh) / yearHigh) * 100.0
+    }
+    
+    struct BarData: Identifiable {
+        let id = UUID()
+        let label: String
+        let value: Double
+        let color: Color
+    }
+    
+    var data: [BarData] {
+        [
+            .init(label: "52W High", value: yearHigh, color: .gray.opacity(0.5)),
+            .init(label: "Current", value: currentPrice, color: .blue)
+        ]
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "arrow.down.right.circle.fill").font(.title2).foregroundColor(.blue)
+                Text("Price vs 52-Week High").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                if drawdown < -0.1 {
+                    Text("\(String(format: "%.1f", drawdown))%").font(.title3).bold().foregroundColor(.red)
+                }
+            }
+            
+            Chart(data) { item in
+                BarMark(
+                    x: .value("Price", item.value),
+                    y: .value("Type", item.label)
+                )
+                .foregroundStyle(item.color.gradient)
+                .annotation(position: .trailing) {
+                    Text(String(format: "%.2f %@", item.value, symbol))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(height: 160)
+            .chartXAxis { AxisMarks(position: .bottom) }
+            .chartYAxis { AxisMarks(position: .leading) }
+            
+            if drawdown < -20 {
+                Text("📉 Trading significantly below highs. Potential opportunity if fundamentals are intact.")
+                    .font(.caption).italic().foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+    }
+}
+
+// --- EXISTING SUBVIEWS (unchanged logic) ---
 
 struct InfoButton: View {
     let helpText: String
@@ -348,9 +680,7 @@ struct FinancialHealthView: View {
     var fcfPerShare: Double
     var growthRate: Double
     var symbol: String
-    
     var netCash: Double { cash - debt }
-    
     var fcfProjections: [Double] {
         var values: [Double] = []
         var current = fcfPerShare
@@ -360,7 +690,6 @@ struct FinancialHealthView: View {
         }
         return values
     }
-
     var body: some View {
         VStack(spacing: 20) {
             HStack {
@@ -368,77 +697,49 @@ struct FinancialHealthView: View {
                 Text("Risk & Growth Check").font(.headline).foregroundColor(.secondary)
                 Spacer()
             }
-           
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Balance Sheet").font(.caption).bold().foregroundColor(.secondary)
-                   
                     if cash == 0 && debt == 0 {
                         Text("Enter Cash & Debt").font(.caption).italic().foregroundColor(.secondary)
                     } else {
                         HStack(alignment: .bottom, spacing: 15) {
                             VStack {
                                 Text(String(format: "%.1fB", cash)).font(.caption2)
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.green.gradient)
-                                    .frame(width: 30, height: 60 * (cash / max(cash, debt, 1.0)))
+                                RoundedRectangle(cornerRadius: 6).fill(Color.green.gradient).frame(width: 30, height: 60 * (cash / max(cash, debt, 1.0)))
                                 Text("Cash").font(.tiny).bold()
                             }
-                           
                             VStack {
                                 Text(String(format: "%.1fB", debt)).font(.caption2)
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.red.gradient)
-                                    .frame(width: 30, height: 60 * (debt / max(cash, debt, 1.0)))
+                                RoundedRectangle(cornerRadius: 6).fill(Color.red.gradient).frame(width: 30, height: 60 * (debt / max(cash, debt, 1.0)))
                                 Text("Debt").font(.tiny).bold()
                             }
                         }.frame(height: 80)
-                       
-                        Text(netCash >= 0 ? "Net Cash (Safe)" : "Net Debt (Leveraged)")
-                            .font(.tiny).bold()
-                            .foregroundColor(netCash >= 0 ? .green : .red)
-                            .padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
+                        Text(netCash >= 0 ? "Net Cash (Safe)" : "Net Debt (Leveraged)").font(.tiny).bold().foregroundColor(netCash >= 0 ? .green : .red).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
                     }
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
-              
+                .padding().frame(maxWidth: .infinity).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Proj. FCF Growth (5Y)").font(.caption).bold().foregroundColor(.secondary)
-                   
                     if fcfPerShare > 0 {
                         HStack(alignment: .bottom, spacing: 8) {
                             let data = fcfProjections
                             let maxVal = (data.max() ?? 1.0) * 1.1
-                            
                             ForEach(0..<5) { i in
                                 VStack(spacing: 2) {
                                     Spacer()
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.blue.gradient)
-                                        .frame(height: 60 * (data[i] / maxVal))
+                                    RoundedRectangle(cornerRadius: 4).fill(Color.blue.gradient).frame(height: 60 * (data[i] / maxVal))
                                     Text("\(Int(data[i]))").font(.system(size: 9))
                                     Text("Y\(i+1)").font(.tiny).foregroundColor(.secondary)
                                 }
                             }
                         }.frame(height: 80)
-                       
-                        Text("CAGR: \(String(format: "%.1f", growthRate))%")
-                            .font(.tiny).bold()
-                            .foregroundColor(growthRate > 0 ? .green : .red)
-                            .padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
+                        Text("CAGR: \(String(format: "%.1f", growthRate))%").font(.tiny).bold().foregroundColor(growthRate > 0 ? .green : .red).padding(4).background(Color.gray.opacity(0.1)).cornerRadius(4)
                     } else {
                         Text("Enter Positive FCF").font(.caption).italic().foregroundColor(.secondary)
                     }
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+                .padding().frame(maxWidth: .infinity).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(10).overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
             }
         }
     }
@@ -449,10 +750,8 @@ struct BuyBoxView: View {
     var currentPrice: Double
     @Binding var marginOfSafety: Double
     var symbol: String
-    
     var targetBuyPrice: Double { intrinsicValue * (1.0 - (marginOfSafety / 100.0)) }
     var isBuyable: Bool { currentPrice > 0 && currentPrice <= targetBuyPrice }
-    
     var body: some View {
         VStack(spacing: 15) {
             HStack {
@@ -505,7 +804,7 @@ struct ReverseDCFView: View {
                 }
             }
             Spacer()
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
+        }.padding().frame(maxWidth: .infinity).background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
     }
 }
 
@@ -613,35 +912,27 @@ struct PEGRatioGauge: View {
     }
 }
 
-// --- AJOUT : NOUVELLE STRUCT POUR FCF YIELD ---
 struct FCFYieldGauge: View {
     var fcfPerShare: Double
     var currentPrice: Double
-    
     var yield: Double {
         guard currentPrice > 0 else { return 0.0 }
         return (fcfPerShare / currentPrice) * 100.0
     }
-    
-    // On plafonne visuellement à 10% (mais on affiche la vraie valeur)
     var yieldProgress: CGFloat {
         let clamped = min(max(yield, 0.0), 10.0)
         return CGFloat(clamped / 10.0)
     }
-    
-    // Logique inverse du PEG : Haut = Bien (Vert), Bas = Attention (Rouge)
     var statusText: String {
         if yield < 3.0 { return "Expensive (<3%)" }
         else if yield < 7.0 { return "Fair (3-7%)" }
         else { return "Attractive (>7%)" }
     }
-    
     var statusColor: Color {
         if yield < 3.0 { return .red }
         else if yield < 7.0 { return .yellow }
         else { return .green }
     }
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -650,10 +941,8 @@ struct FCFYieldGauge: View {
                 Spacer()
                 Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor)
             }
-            
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    // Dégradé : Rouge (0%) -> Jaune (3-7%) -> Vert (10%+)
                     Rectangle().fill(LinearGradient(stops: [
                         .init(color: .red.opacity(0.8), location: 0.0),
                         .init(color: .red.opacity(0.8), location: 0.3),
@@ -675,7 +964,6 @@ struct FCFYieldGauge: View {
                         .fixedSize()
                 }
             }.frame(height: 50)
-            
             HStack {
                 Text("0%").font(.tiny)
                 Spacer()
