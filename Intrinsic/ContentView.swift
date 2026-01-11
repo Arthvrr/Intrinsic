@@ -1,22 +1,23 @@
 import SwiftUI
 import Charts
 
-// --- MODELS DONNÉES (Sendable pour Swift 6) ---
+// --- MODELS INTERNES (DTOs) - Nettoyés pour éviter les warnings Swift 6 ---
+// On retire 'Sendable' ici car ces structs ne quittent pas l'actor FinnhubService.
 
-struct FinnhubQuote: Codable, Sendable {
-    let c: Double // Current Price
+struct FinnhubQuote: Codable {
+    let c: Double
 }
 
-struct FinnhubMetricResponse: Codable, Sendable {
+struct FinnhubMetricResponse: Codable {
     let metric: FinnhubMetricData
     let series: FinnhubSeries?
 }
 
-struct FinnhubSeries: Codable, Sendable {
+struct FinnhubSeries: Codable {
     let annual: FinnhubSeriesAnnual?
 }
 
-struct FinnhubSeriesAnnual: Codable, Sendable {
+struct FinnhubSeriesAnnual: Codable {
     let pe: [FinnhubSeriesDataPoint]?
     let freeCashFlow: [FinnhubSeriesDataPoint]?
     
@@ -26,31 +27,23 @@ struct FinnhubSeriesAnnual: Codable, Sendable {
     }
 }
 
-struct FinnhubSeriesDataPoint: Codable, Sendable {
+struct FinnhubSeriesDataPoint: Codable {
     let period: String?
     let v: Double?
 }
 
-// Modèle pour ExchangeRate-API
-struct ExchangeRateResponse: Codable, Sendable {
+struct ExchangeRateResponse: Codable {
     let conversion_rates: [String: Double]
     let result: String
 }
 
-// NOUVEAU : Modèle pour Target Price Analystes
-struct FinnhubTargetResponse: Codable, Sendable {
-    let targetHigh: Double?
-    let targetLow: Double?
-    let targetMean: Double?
-    let lastUpdated: String?
-}
-
-struct FinnhubMetricData: Codable, Sendable {
+struct FinnhubMetricData: Codable {
     let cashAndEquivalentsAnnual: Double?
     let totalDebtAnnual: Double?
     let freeCashFlowTTM: Double?
     let peTTM: Double?
     let yearHigh: Double?
+    let beta: Double?
     
     let pfcfShareTTM: Double?
     let cashPerSharePerShareAnnual: Double?
@@ -63,6 +56,7 @@ struct FinnhubMetricData: Codable, Sendable {
         case freeCashFlowTTM
         case peTTM
         case yearHigh = "52WeekHigh"
+        case beta
         case pfcfShareTTM
         case cashPerSharePerShareAnnual
         case bookValuePerShareAnnual
@@ -70,15 +64,15 @@ struct FinnhubMetricData: Codable, Sendable {
     }
 }
 
-struct FinnhubProfile: Codable, Sendable {
+struct FinnhubProfile: Codable {
     let shareOutstanding: Double?
     let currency: String?
     let ticker: String?
     let exchange: String?
-    let name: String? // Ajout du nom pour l'affichage
+    let name: String?
 }
 
-// --- APP ENUMS & STRUCTS ---
+// --- APP ENUMS & STRUCTS (UI Models) ---
 
 enum ValuationMethod: String, CaseIterable, Identifiable {
     case gordon = "Conservative (Perpetual)"
@@ -99,19 +93,19 @@ struct PEDataPoint: Identifiable {
     let color: Color
 }
 
-// NOUVEAU : Struct pour les pairs
 struct PeerData: Identifiable, Sendable {
     let id = UUID()
     let ticker: String
     let pe: Double
 }
 
-// --- FINNHUB SERVICE (CONVERSION TOTALE ADR + FEATURES PRO) ---
+// --- FINNHUB SERVICE ---
 
 actor FinnhubService {
     private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0"
     private let exchangeRateApiKey = "2d3a18191c2ffd303066358c"
     
+    // Cette structure sort de l'actor vers la MainActor (UI), donc elle DOIT être Sendable
     struct StockData: Sendable {
         let price: Double
         let currency: String
@@ -124,6 +118,7 @@ actor FinnhubService {
         let yearHigh: Double
         let fcfCagr: Double?
         let name: String
+        let beta: Double?
     }
     
     private func fetchAndDecode<T: Codable>(url: URL, type: T.Type, label: String) async throws -> T {
@@ -145,25 +140,15 @@ actor FinnhubService {
         return 1.0
     }
     
-    // --- FEATURE 3 : Fetch Analyst Target ---
-    func fetchAnalystTarget(symbol: String) async -> FinnhubTargetResponse? {
-        let url = URL(string: "https://finnhub.io/api/v1/stock/price-target?symbol=\(symbol)&token=\(finnhubApiKey)")!
-        return try? await fetchAndDecode(url: url, type: FinnhubTargetResponse.self, label: "TARGET")
-    }
-    
-    // --- FEATURE 2 : Fetch Peers & P/E ---
     func fetchPeersComparison(symbol: String) async -> [PeerData] {
-        // 1. Get List of Peers
         let peersURL = URL(string: "https://finnhub.io/api/v1/stock/peers?symbol=\(symbol)&token=\(finnhubApiKey)")!
         guard let peersList = try? await fetchAndDecode(url: peersURL, type: [String].self, label: "PEERS") else { return [] }
         
-        // On prend les 4 premiers qui ne sont pas le ticker actuel (pour éviter les doublons ou tickers bizarres)
         let cleanSymbol = symbol.uppercased()
-        let topPeers = peersList.filter { $0 != cleanSymbol && !$0.contains(".") }.prefix(3) // Top 3 concurrents
+        let topPeers = peersList.filter { $0 != cleanSymbol && !$0.contains(".") }.prefix(3)
         
         var results: [PeerData] = []
         
-        // 2. Fetch P/E for each peer (in parallel)
         await withTaskGroup(of: PeerData?.self) { group in
             for peer in topPeers {
                 group.addTask {
@@ -175,14 +160,10 @@ actor FinnhubService {
                     return nil
                 }
             }
-            
             for await peerData in group {
-                if let data = peerData {
-                    results.append(data)
-                }
+                if let data = peerData { results.append(data) }
             }
         }
-        
         return results.sorted { $0.ticker < $1.ticker }
     }
     
@@ -282,7 +263,8 @@ actor FinnhubService {
             peHistoricalAvg: avgPE,
             yearHigh: adjustedHigh,
             fcfCagr: calculatedCagr,
-            name: profileResult?.name ?? symbol
+            name: profileResult?.name ?? symbol,
+            beta: m.beta
         )
     }
 }
@@ -306,6 +288,7 @@ struct ContentView: View {
     @State private var currentPEInput: String = "0.00"
     @State private var historicalPEInput: String = "0.00"
     @State private var fcfCagrDisplay: String? = nil
+    @State private var betaInput: Double? = nil
 
     @State private var growthRate: Double = 0.0
     @State private var discountRate: Double = 0.0
@@ -322,8 +305,6 @@ struct ContentView: View {
     
     // NEW DATA STATES
     @State private var peersData: [PeerData] = []
-    @State private var targetPrice: Double? = nil
-    @State private var analystConsensus: String = "---"
     
     private let finnhubService = FinnhubService()
 
@@ -384,6 +365,24 @@ struct ContentView: View {
                             
                             inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
                             inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in %")
+                            
+                            // --- BOUTON MAGIC WACC ---
+                            if let beta = betaInput {
+                                let riskFree = 4.2 // Taux US 10 ans approx
+                                let riskPremium = 5.0
+                                let wacc = riskFree + (beta * riskPremium)
+                                Button(action: { self.discountRate = Double(String(format: "%.1f", wacc)) ?? 10.0 }) {
+                                    HStack {
+                                        Image(systemName: "wand.and.stars")
+                                        Text("Apply WACC: \(String(format: "%.1f", wacc))% (Beta \(String(format: "%.2f", beta)))")
+                                    }
+                                    .font(.caption)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundColor(.blue)
+                                .padding(.bottom, 5)
+                            }
+                            
                             inputRowDouble(label: "Exit Multiple", value: $exitMultiple, suffix: "x", helpText: "Expected P/E ratio in 5 years")
                         }
                     }
@@ -408,12 +407,6 @@ struct ContentView: View {
                     VStack(spacing: 30) {
                         ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
                             .padding(.top, 40)
-                        
-                        // --- NEW: ANALYST TARGET ---
-                        if currentPrice > 0 && targetPrice != nil {
-                            AnalystTargetView(currentPrice: currentPrice, targetPrice: targetPrice!, symbol: currencySymbol)
-                                .padding(.horizontal)
-                        }
                         
                         if hasCalculated && currentPrice > 0 {
                             ReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol)
@@ -447,7 +440,7 @@ struct ContentView: View {
                         }
                         
                         if hasCalculated {
-                            // --- NEW: PEERS COMPARISON ---
+                            // PEERS COMPARISON
                             if !peersData.isEmpty {
                                 PeersComparisonView(mainTicker: ticker, mainPE: parseDouble(currentPEInput), peers: peersData)
                                     .padding(.horizontal)
@@ -489,8 +482,14 @@ struct ContentView: View {
                             if yearHigh > 0 {
                                 PriceRangeChart(currentPrice: currentPrice, yearHigh: yearHigh, symbol: currencySymbol)
                                     .padding(.horizontal)
-                                    .padding(.bottom, 50)
                             }
+                        }
+                        
+                        // --- EXOTIC BETA GAUGE (MOVED TO BOTTOM) ---
+                        if let beta = betaInput {
+                            ExoticBetaGauge(beta: beta)
+                                .padding(.horizontal)
+                                .padding(.bottom, 50)
                         } else {
                             Color.clear.frame(height: 50)
                         }
@@ -516,7 +515,6 @@ struct ContentView: View {
         isLoading = true
         priceDisplay = "Loading..."
         peersData = []
-        targetPrice = nil
         
         Task {
             // 1. Fetch Main Stock Data
@@ -534,20 +532,18 @@ struct ContentView: View {
                     self.debtInput = String(format: "%.2f", data.debtB)
                     self.currentPEInput = String(format: "%.2f", data.peCurrent)
                     self.historicalPEInput = String(format: "%.2f", data.peHistoricalAvg)
+                    self.betaInput = data.beta // Store Beta
                     
                     if let cagr = data.fcfCagr { self.fcfCagrDisplay = String(format: "%.1f%%", cagr) }
                     else { self.fcfCagrDisplay = nil }
+                    
+                    // --- AUTO CALCULATE FIX ---
+                    // Dès que les données sont là, on lance le calcul sans attendre le clic utilisateur
+                    self.calculateIntrinsicValue()
                 }
             }
             
-            // 2. Fetch Analyst Target (Parallel)
-            if let targetData = await finnhubService.fetchAnalystTarget(symbol: cleanTicker) {
-                await MainActor.run {
-                    self.targetPrice = targetData.targetMean
-                }
-            }
-            
-            // 3. Fetch Peers (Parallel)
+            // 2. Fetch Peers (Parallel)
             let peers = await finnhubService.fetchPeersComparison(symbol: cleanTicker)
             await MainActor.run {
                 self.peersData = peers
@@ -636,51 +632,100 @@ struct ContentView: View {
     }
 }
 
-// --- NEW FEATURES VIEWS ---
+// --- NEW CREATIVE BETA GAUGE (EXOTIC) ---
 
-struct AnalystTargetView: View {
-    var currentPrice: Double
-    var targetPrice: Double
-    var symbol: String
+struct ExoticBetaGauge: View {
+    let beta: Double
     
-    var upside: Double {
-        return ((targetPrice - currentPrice) / currentPrice) * 100.0
+    // Plage du Beta : 0.0 à 3.0 (pour l'affichage)
+    private var normalizedBeta: Double { min(max(beta, 0.0), 3.0) / 3.0 }
+    
+    private var colorZone: Color {
+        if beta < 0.8 { return .green }
+        if beta < 1.2 { return .yellow }
+        if beta < 2.0 { return .orange }
+        return .blue
+    }
+    
+    private var riskText: String {
+        if beta < 0.8 { return "LOW VOLATILITY" }
+        if beta < 1.2 { return "MARKET AVG" }
+        if beta < 2.0 { return "HIGH VOLATILITY" }
+        return "SPECULATIVE"
     }
     
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Analyst Consensus").font(.headline).foregroundColor(.secondary)
-                HStack(alignment: .bottom) {
-                    Text(String(format: "%.2f %@", targetPrice, symbol))
-                        .font(.title2)
-                        .bold()
-                        .foregroundColor(.primary)
-                    
-                    Text("Avg Target")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 2)
-                }
+        VStack(spacing: 5) {
+            HStack {
+                Image(systemName: "bolt.horizontal.circle.fill").foregroundColor(.blue)
+                Text("MARKET RISK (BETA)").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                Text(String(format: "%.2f", beta)).font(.title2).fontWeight(.black).foregroundColor(colorZone)
             }
-            Spacer()
             
-            VStack(alignment: .trailing) {
-                Text("Wall St. Upside")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            ZStack {
+                // Fond du tachymètre
+                Circle()
+                    .trim(from: 0.0, to: 0.5)
+                    .stroke(Color.gray.opacity(0.2), style: StrokeStyle(lineWidth: 20, lineCap: .round))
+                    .rotationEffect(.degrees(180))
+                    .frame(height: 150)
                 
-                HStack(spacing: 4) {
-                    Image(systemName: upside > 0 ? "arrow.up.right" : "arrow.down.right")
-                    Text(String(format: "%.1f%%", abs(upside)))
+                // Arc coloré actif (Gradient Angulaire)
+                Circle()
+                    .trim(from: 0.0, to: 0.5 * normalizedBeta)
+                    .stroke(
+                        AngularGradient(
+                            gradient: Gradient(colors: [
+                                            Color.blue,
+                            ]),
+                                        
+                        center: .center, startAngle: .degrees(180), endAngle: .degrees(360)),
+                        style: StrokeStyle(lineWidth: 20, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(180))
+                    .frame(height: 150)
+                    .animation(.easeOut(duration: 1.5), value: beta)
+                
+                // Graduations
+                ForEach(0..<4) { i in
+                    VStack {
+                        Text("\(i)")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .rotationEffect(.degrees(Double(i) * 60 - 90))
+                    .frame(height: 190)
                 }
-                .font(.headline)
-                .foregroundColor(upside > 0 ? .green : .red)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(upside > 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
-                .cornerRadius(8)
+                
+                // Aiguille
+                Rectangle()
+                    .fill(colorZone)
+                    .frame(width: 4, height: 80)
+                    .offset(y: -30)
+                    .rotationEffect(.degrees(normalizedBeta * 180 - 90))
+                    .animation(.spring(response: 0.8, dampingFraction: 0.6), value: beta)
+                
+                // Centre de l'aiguille
+                Circle()
+                    .fill(Color(nsColor: .windowBackgroundColor))
+                    .frame(width: 20, height: 20)
+                    .overlay(Circle().stroke(Color.gray, lineWidth: 2))
+                
+                // Texte descriptif en bas
+                VStack {
+                    Spacer()
+                    Text(riskText)
+                        .font(.system(size: 14, weight: .heavy, design: .monospaced))
+                        .foregroundColor(colorZone)
+                        .padding(.top, 40)
+                        .shadow(color: colorZone.opacity(0.5), radius: 5)
+                }
             }
+            .frame(height: 110) // Coupe le bas du cercle
+            .padding(.bottom, 10)
         }
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
@@ -688,6 +733,8 @@ struct AnalystTargetView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
+
+// --- SUBVIEWS ---
 
 struct PeersComparisonView: View {
     let mainTicker: String
@@ -1072,7 +1119,7 @@ struct FCFYieldGauge: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Image(systemName: "banknote.fill").font(.title2).foregroundColor(.green)
+                Image(systemName: "banknote.fill").font(.title2).foregroundColor(.blue)
                 Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.secondary)
                 Spacer()
                 Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor)
