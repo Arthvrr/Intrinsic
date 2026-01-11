@@ -4,7 +4,7 @@ import Charts
 // --- MODELS DONNÉES (Sendable pour Swift 6) ---
 
 struct FinnhubQuote: Codable, Sendable {
-    let c: Double // Current Price (En USD pour les ADR)
+    let c: Double // Current Price
 }
 
 struct FinnhubMetricResponse: Codable, Sendable {
@@ -37,6 +37,14 @@ struct ExchangeRateResponse: Codable, Sendable {
     let result: String
 }
 
+// NOUVEAU : Modèle pour Target Price Analystes
+struct FinnhubTargetResponse: Codable, Sendable {
+    let targetHigh: Double?
+    let targetLow: Double?
+    let targetMean: Double?
+    let lastUpdated: String?
+}
+
 struct FinnhubMetricData: Codable, Sendable {
     let cashAndEquivalentsAnnual: Double?
     let totalDebtAnnual: Double?
@@ -67,6 +75,7 @@ struct FinnhubProfile: Codable, Sendable {
     let currency: String?
     let ticker: String?
     let exchange: String?
+    let name: String? // Ajout du nom pour l'affichage
 }
 
 // --- APP ENUMS & STRUCTS ---
@@ -90,11 +99,18 @@ struct PEDataPoint: Identifiable {
     let color: Color
 }
 
-// --- FINNHUB SERVICE (CONVERSION TOTALE ADR) ---
+// NOUVEAU : Struct pour les pairs
+struct PeerData: Identifiable, Sendable {
+    let id = UUID()
+    let ticker: String
+    let pe: Double
+}
+
+// --- FINNHUB SERVICE (CONVERSION TOTALE ADR + FEATURES PRO) ---
 
 actor FinnhubService {
     private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0"
-    private let exchangeRateApiKey = "2d3a18191c2ffd303066358c" // TA CLÉ ExchangeRate-API
+    private let exchangeRateApiKey = "2d3a18191c2ffd303066358c"
     
     struct StockData: Sendable {
         let price: Double
@@ -107,38 +123,70 @@ actor FinnhubService {
         let peHistoricalAvg: Double
         let yearHigh: Double
         let fcfCagr: Double?
+        let name: String
     }
     
     private func fetchAndDecode<T: Codable>(url: URL, type: T.Type, label: String) async throws -> T {
-        // print("🚀 [\(label)] Fetching: \(url.absoluteString)")
         let (data, _) = try await URLSession.shared.data(from: url)
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .useDefaultKeys
         return try decoder.decode(T.self, from: data)
     }
     
-    // Fonction pour récupérer le taux de change (Devise Locale -> USD)
     private func fetchConversionRateToUSD(from sourceCurrency: String) async -> Double {
         if sourceCurrency == "USD" { return 1.0 }
-        
-        guard let url = URL(string: "https://v6.exchangerate-api.com/v6/\(exchangeRateApiKey)/latest/\(sourceCurrency)") else {
-            return 1.0
-        }
-        
+        guard let url = URL(string: "https://v6.exchangerate-api.com/v6/\(exchangeRateApiKey)/latest/\(sourceCurrency)") else { return 1.0 }
         do {
             let response = try await fetchAndDecode(url: url, type: ExchangeRateResponse.self, label: "FOREX")
             if response.result == "success", let rate = response.conversion_rates["USD"] {
-                print("✅ Taux ExchangeRate trouvé: 1 \(sourceCurrency) = \(rate) USD")
                 return rate
             }
-        } catch {
-            print("❌ Erreur Forex: \(error)")
-        }
+        } catch { print("❌ Erreur Forex: \(error)") }
         return 1.0
     }
     
+    // --- FEATURE 3 : Fetch Analyst Target ---
+    func fetchAnalystTarget(symbol: String) async -> FinnhubTargetResponse? {
+        let url = URL(string: "https://finnhub.io/api/v1/stock/price-target?symbol=\(symbol)&token=\(finnhubApiKey)")!
+        return try? await fetchAndDecode(url: url, type: FinnhubTargetResponse.self, label: "TARGET")
+    }
+    
+    // --- FEATURE 2 : Fetch Peers & P/E ---
+    func fetchPeersComparison(symbol: String) async -> [PeerData] {
+        // 1. Get List of Peers
+        let peersURL = URL(string: "https://finnhub.io/api/v1/stock/peers?symbol=\(symbol)&token=\(finnhubApiKey)")!
+        guard let peersList = try? await fetchAndDecode(url: peersURL, type: [String].self, label: "PEERS") else { return [] }
+        
+        // On prend les 4 premiers qui ne sont pas le ticker actuel (pour éviter les doublons ou tickers bizarres)
+        let cleanSymbol = symbol.uppercased()
+        let topPeers = peersList.filter { $0 != cleanSymbol && !$0.contains(".") }.prefix(3) // Top 3 concurrents
+        
+        var results: [PeerData] = []
+        
+        // 2. Fetch P/E for each peer (in parallel)
+        await withTaskGroup(of: PeerData?.self) { group in
+            for peer in topPeers {
+                group.addTask {
+                    let metricURL = URL(string: "https://finnhub.io/api/v1/stock/metric?symbol=\(peer)&metric=all&token=\(self.finnhubApiKey)")!
+                    if let resp = try? await self.fetchAndDecode(url: metricURL, type: FinnhubMetricResponse.self, label: "PEER_METRIC"),
+                       let pe = resp.metric.peTTM {
+                        return PeerData(ticker: peer, pe: pe)
+                    }
+                    return nil
+                }
+            }
+            
+            for await peerData in group {
+                if let data = peerData {
+                    results.append(data)
+                }
+            }
+        }
+        
+        return results.sorted { $0.ticker < $1.ticker }
+    }
+    
     func fetchStockData(symbol: String) async throws -> StockData {
-        print("\n--- 🟢 DÉBUT ANALYSE : \(symbol) ---")
         let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         
         let quoteURL = URL(string: "https://finnhub.io/api/v1/quote?symbol=\(cleanSymbol)&token=\(finnhubApiKey)")!
@@ -154,96 +202,60 @@ actor FinnhubService {
         let profileResult = try? await profile
         let m = metricsResult.metric
         
-        // --- DONNÉES BRUTES ---
-        // Hypothèse ADR : Le prix (Quote) est déjà en USD car c'est le ticker US.
         let priceUSD = quoteResult.c
-        
         let sharesM = profileResult?.shareOutstanding ?? 0.0
         let sharesB = sharesM / 1000.0
         let profileCurrency = profileResult?.currency?.uppercased() ?? "USD"
         
-        print("📊 Info: PrixTicker=\(priceUSD) USD, DeviseComptable=\(profileCurrency)")
-        
-        // --- PRÉPARATION DU TAUX DE CONVERSION ---
         var conversionRate = 1.0
         if profileCurrency != "USD" {
-             print("⚠️ ADR/Devise étrangère détectée (\(profileCurrency)). Conversion des fondamentaux en USD requise.")
+             print("⚠️ ADR/Devise étrangère détectée (\(profileCurrency)). Conversion requise.")
              conversionRate = await fetchConversionRateToUSD(from: profileCurrency)
         }
         
-        // --- APPLICATION DE LA CONVERSION AUX FONDAMENTAUX (Metric) ---
-        // On multiplie tout ce qui vient de 'metric' par le taux, car c'est en devise locale.
-        
-        // 1. FCF (Conversion)
+        // FCF
         var finalFCFPerShare = 0.0
         if let fcfTotal = m.freeCashFlowTTM {
             finalFCFPerShare = sharesM > 0 ? (fcfTotal / sharesM) : 0.0
         } else if let priceToFcf = m.pfcfShareTTM, priceToFcf > 0 {
-            // Ici c'est tricky : le ratio Price/FCF est sans unité.
-            // Si on déduit le FCF via le Prix (USD) / Ratio, on obtient du USD directement.
-            // Mais si on utilise le FCF total (DKK) / Shares, on a du DKK.
-            // Priorité au calcul direct :
             if let rawFCF = m.freeCashFlowTTM {
                  finalFCFPerShare = (rawFCF / sharesM) * conversionRate
             } else {
-                 // Fallback via ratio (déjà en USD via le prix)
                  finalFCFPerShare = priceUSD / priceToFcf
             }
         }
-        // Si on a utilisé le calcul brut, on s'assure qu'il est converti.
-        // (Logique simplifiée : si on a appliqué le rate ligne 146, c'est bon).
-        // On refait le calcul propre :
         if let fcfTotal = m.freeCashFlowTTM {
              let fcfPerShareNative = sharesM > 0 ? (fcfTotal / sharesM) : 0.0
              finalFCFPerShare = fcfPerShareNative * conversionRate
         }
         
-        // 2. Cash (Conversion)
+        // Cash & Debt
         var finalCashB = 0.0
-        if let cashTotalM = m.cashAndEquivalentsAnnual {
-            finalCashB = (cashTotalM / 1000.0) * conversionRate
-        } else if let cashPerShare = m.cashPerSharePerShareAnnual {
-            // cashPerShare est en DKK
-            finalCashB = ((cashPerShare * sharesM) / 1000.0) * conversionRate
-        }
+        if let cashTotalM = m.cashAndEquivalentsAnnual { finalCashB = (cashTotalM / 1000.0) * conversionRate }
+        else if let cashPerShare = m.cashPerSharePerShareAnnual { finalCashB = ((cashPerShare * sharesM) / 1000.0) * conversionRate }
         
-        // 3. Debt (Conversion)
         var finalDebtB = 0.0
-        if let debtTotalM = m.totalDebtAnnual {
-            finalDebtB = (debtTotalM / 1000.0) * conversionRate
-        } else if let debtToEquity = m.totalDebtToEquityAnnual, let bookVal = m.bookValuePerShareAnnual {
-            // BookVal est en DKK
+        if let debtTotalM = m.totalDebtAnnual { finalDebtB = (debtTotalM / 1000.0) * conversionRate }
+        else if let debtToEquity = m.totalDebtToEquityAnnual, let bookVal = m.bookValuePerShareAnnual {
             let totalEquityM = sharesM * bookVal
             let totalDebtM = totalEquityM * debtToEquity
             finalDebtB = (totalDebtM / 1000.0) * conversionRate
         }
         
-        // 4. 52-Week High (Conversion)
+        // High
         let rawHigh = m.yearHigh ?? 0.0
-        // Si rawHigh est 0 (pas de donnée), on fallback sur le prix actuel
         let convertedHigh = (rawHigh > 0 ? rawHigh : priceUSD) * conversionRate
-        
-        // Sécurité : High ne peut pas être plus bas que le prix actuel (en USD)
-        // Mais attention, si conversionRate est 1.0 (USD), convertedHigh = rawHigh.
-        // Si conversionRate < 1 (DKK->USD), convertedHigh devient petit (~100).
         let adjustedHigh = max(convertedHigh, priceUSD)
         
-        print("📈 High: Brut=\(rawHigh) \(profileCurrency) -> Converti=\(convertedHigh) USD")
-
-        // 5. PE Historique (Ratio sans unité, pas de conversion nécessaire sauf si incohérence)
-        // On suppose que Finnhub calcule le PE correctement (Prix / EPS) dans la même devise.
+        // PE
         var avgPE = 0.0
         if let seriesPE = metricsResult.series?.annual?.pe {
             let validPEs = seriesPE.compactMap { $0.v }.filter { $0 > 0 }
             let recentPEs = validPEs.prefix(5)
-            if !recentPEs.isEmpty {
-                avgPE = recentPEs.reduce(0, +) / Double(recentPEs.count)
-            }
-        } else {
-            avgPE = m.peTTM ?? 0.0
-        }
+            if !recentPEs.isEmpty { avgPE = recentPEs.reduce(0, +) / Double(recentPEs.count) }
+        } else { avgPE = m.peTTM ?? 0.0 }
         
-        // 6. CAGR (Pourcentage, pas de conversion)
+        // CAGR
         var calculatedCagr: Double? = nil
         if let seriesFCF = metricsResult.series?.annual?.freeCashFlow {
             let sortedFCF = seriesFCF.sorted { ($0.period ?? "") < ($1.period ?? "") }
@@ -260,16 +272,17 @@ actor FinnhubService {
         }
         
         return StockData(
-            price: priceUSD, // On garde le prix du Ticker (USD)
+            price: priceUSD,
             currency: "USD",
             sharesOutstandingB: sharesB,
-            cashB: finalCashB, // Converti
-            debtB: finalDebtB, // Converti
-            fcfPerShare: finalFCFPerShare, // Converti
+            cashB: finalCashB,
+            debtB: finalDebtB,
+            fcfPerShare: finalFCFPerShare,
             peCurrent: m.peTTM ?? 0.0,
             peHistoricalAvg: avgPE,
-            yearHigh: adjustedHigh, // Converti
-            fcfCagr: calculatedCagr
+            yearHigh: adjustedHigh,
+            fcfCagr: calculatedCagr,
+            name: profileResult?.name ?? symbol
         )
     }
 }
@@ -278,6 +291,7 @@ actor FinnhubService {
 
 struct ContentView: View {
     @State private var ticker: String = "NVDA"
+    @State private var stockName: String = ""
     @State private var priceDisplay: String = "---"
     @State private var isLoading = false
     @State private var currentPrice: Double = 0.0
@@ -306,6 +320,11 @@ struct ContentView: View {
     @State private var projectionData: [ProjectionPoint] = []
     @State private var hasCalculated: Bool = false
     
+    // NEW DATA STATES
+    @State private var peersData: [PeerData] = []
+    @State private var targetPrice: Double? = nil
+    @State private var analystConsensus: String = "---"
+    
     private let finnhubService = FinnhubService()
 
     var body: some View {
@@ -329,6 +348,9 @@ struct ContentView: View {
                             HStack {
                                 TextField("Ticker", text: $ticker).onSubmit { fetchFinnhubData() }
                                 Button("Load") { fetchFinnhubData() }
+                            }
+                            if !stockName.isEmpty {
+                                Text(stockName).font(.caption).foregroundColor(.secondary).lineLimit(1)
                             }
                             HStack {
                                 Text("Current Price:"); Spacer()
@@ -356,12 +378,8 @@ struct ContentView: View {
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    Text(cagr)
-                                        .font(.caption)
-                                        .bold()
-                                        .foregroundColor(.blue)
-                                }
-                                .padding(.bottom, 2)
+                                    Text(cagr).font(.caption).bold().foregroundColor(.blue)
+                                }.padding(.bottom, 2)
                             }
                             
                             inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
@@ -390,6 +408,12 @@ struct ContentView: View {
                     VStack(spacing: 30) {
                         ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
                             .padding(.top, 40)
+                        
+                        // --- NEW: ANALYST TARGET ---
+                        if currentPrice > 0 && targetPrice != nil {
+                            AnalystTargetView(currentPrice: currentPrice, targetPrice: targetPrice!, symbol: currencySymbol)
+                                .padding(.horizontal)
+                        }
                         
                         if hasCalculated && currentPrice > 0 {
                             ReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol)
@@ -423,6 +447,12 @@ struct ContentView: View {
                         }
                         
                         if hasCalculated {
+                            // --- NEW: PEERS COMPARISON ---
+                            if !peersData.isEmpty {
+                                PeersComparisonView(mainTicker: ticker, mainPE: parseDouble(currentPEInput), peers: peersData)
+                                    .padding(.horizontal)
+                            }
+                            
                             PEComparisonChart(
                                 currentPE: parseDouble(currentPEInput),
                                 historicalPE: parseDouble(historicalPEInput),
@@ -485,14 +515,16 @@ struct ContentView: View {
         
         isLoading = true
         priceDisplay = "Loading..."
+        peersData = []
+        targetPrice = nil
         
         Task {
-            do {
-                let data = try await finnhubService.fetchStockData(symbol: cleanTicker)
-                
+            // 1. Fetch Main Stock Data
+            if let data = try? await finnhubService.fetchStockData(symbol: cleanTicker) {
                 await MainActor.run {
                     self.currentPrice = data.price
                     self.yearHigh = data.yearHigh
+                    self.stockName = data.name
                     self.currencySymbol = getCurrencySymbol(code: data.currency)
                     self.priceDisplay = String(format: "%.2f %@", data.price, self.currencySymbol)
                     
@@ -503,20 +535,23 @@ struct ContentView: View {
                     self.currentPEInput = String(format: "%.2f", data.peCurrent)
                     self.historicalPEInput = String(format: "%.2f", data.peHistoricalAvg)
                     
-                    if let cagr = data.fcfCagr {
-                        self.fcfCagrDisplay = String(format: "%.1f%%", cagr)
-                    } else {
-                        self.fcfCagrDisplay = nil
-                    }
-                    
-                    self.isLoading = false
+                    if let cagr = data.fcfCagr { self.fcfCagrDisplay = String(format: "%.1f%%", cagr) }
+                    else { self.fcfCagrDisplay = nil }
                 }
-            } catch {
-                print("❌ ERREUR FETCH : \(error)")
+            }
+            
+            // 2. Fetch Analyst Target (Parallel)
+            if let targetData = await finnhubService.fetchAnalystTarget(symbol: cleanTicker) {
                 await MainActor.run {
-                    self.isLoading = false
-                    self.priceDisplay = "Error"
+                    self.targetPrice = targetData.targetMean
                 }
+            }
+            
+            // 3. Fetch Peers (Parallel)
+            let peers = await finnhubService.fetchPeersComparison(symbol: cleanTicker)
+            await MainActor.run {
+                self.peersData = peers
+                self.isLoading = false
             }
         }
     }
@@ -598,6 +633,107 @@ struct ContentView: View {
     }
     func inputRowDouble(label: String, value: Binding<Double>, suffix: String, helpText: String) -> some View {
         HStack { Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8); InfoButton(helpText: helpText); Spacer(); HStack(spacing: 2) { TextField("", value: value, format: .number).textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing); Text(suffix).font(.caption).foregroundColor(.secondary) } }
+    }
+}
+
+// --- NEW FEATURES VIEWS ---
+
+struct AnalystTargetView: View {
+    var currentPrice: Double
+    var targetPrice: Double
+    var symbol: String
+    
+    var upside: Double {
+        return ((targetPrice - currentPrice) / currentPrice) * 100.0
+    }
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Analyst Consensus").font(.headline).foregroundColor(.secondary)
+                HStack(alignment: .bottom) {
+                    Text(String(format: "%.2f %@", targetPrice, symbol))
+                        .font(.title2)
+                        .bold()
+                        .foregroundColor(.primary)
+                    
+                    Text("Avg Target")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 2)
+                }
+            }
+            Spacer()
+            
+            VStack(alignment: .trailing) {
+                Text("Wall St. Upside")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                HStack(spacing: 4) {
+                    Image(systemName: upside > 0 ? "arrow.up.right" : "arrow.down.right")
+                    Text(String(format: "%.1f%%", abs(upside)))
+                }
+                .font(.headline)
+                .foregroundColor(upside > 0 ? .green : .red)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(upside > 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                .cornerRadius(8)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+    }
+}
+
+struct PeersComparisonView: View {
+    let mainTicker: String
+    let mainPE: Double
+    let peers: [PeerData]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            HStack {
+                Image(systemName: "person.3.fill").font(.title2).foregroundColor(.blue)
+                Text("Competitor Analysis (P/E)").font(.headline).foregroundColor(.secondary)
+            }
+            
+            if mainPE == 0 {
+                Text("Enter P/E to compare with peers").font(.caption).italic().foregroundColor(.secondary)
+            } else {
+                Chart {
+                    // Main Ticker
+                    BarMark(
+                        x: .value("Ticker", mainTicker),
+                        y: .value("P/E", mainPE)
+                    )
+                    .foregroundStyle(Color.blue.gradient)
+                    .annotation(position: .top) {
+                        Text(String(format: "%.1f", mainPE)).font(.caption).bold()
+                    }
+                    
+                    // Peers
+                    ForEach(peers) { peer in
+                        BarMark(
+                            x: .value("Ticker", peer.ticker),
+                            y: .value("P/E", peer.pe)
+                        )
+                        .foregroundStyle(Color.purple.opacity(0.3).gradient)
+                        .annotation(position: .top) {
+                            Text(String(format: "%.1f", peer.pe)).font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .frame(height: 200)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
