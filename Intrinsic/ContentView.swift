@@ -984,7 +984,7 @@ struct FCFYieldGauge: View {
     var statusColor: Color { if yield < 3.0 { return .red } else if yield < 7.0 { return .yellow } else { return .green } }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack { Image(systemName: "banknote.fill").font(.title2).foregroundColor(.green); Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.blue); Spacer(); Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor) }
+            HStack { Image(systemName: "banknote.fill").font(.title2).foregroundColor(.blue); Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.blue); Spacer(); Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor) }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle().fill(LinearGradient(stops: [.init(color: .red.opacity(0.8), location: 0.0), .init(color: .red.opacity(0.8), location: 0.3), .init(color: .yellow, location: 0.3), .init(color: .yellow, location: 0.7), .init(color: .green.opacity(0.8), location: 0.7), .init(color: .green.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10)
