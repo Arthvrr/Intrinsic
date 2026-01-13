@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Intrinsic - The Professional Stock Valuation Tool</title>
-    <link rel="icon" type="image/x-icon" href="App Icon/AppIcons/icon-big.ico">
+    <link rel="icon" type="image/x-icon" href="App Icon/AppIcons/icon-transparent.ico">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
@@ -46,7 +46,27 @@
             justify-content: space-between;
             align-items: center;
         }
-        .logo { font-size: 1.5rem; font-weight: 800; background: linear-gradient(to right, #fff, #aaa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        .logo { 
+            display: flex; 
+            align-items: center; 
+            gap: 15px; /* Espace entre le logo et le texte */
+        }
+
+        .logo-img {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px; /* Arrondi style Apple */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+
+        .logo-text { 
+            font-size: 1.5rem; 
+            font-weight: 800; 
+            background: linear-gradient(to right, #fff, #aaa); 
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent; 
+        }
         
         /* --- HERO SECTION --- */
         .hero {
@@ -174,7 +194,7 @@
         .card h3 { font-size: 1.25rem; margin-bottom: 0.5rem; color: var(--text-main); }
         .card p { margin: 0; font-size: 1rem; max-width: 100%; color: var(--text-muted); }
 
-        /* --- COMPARISON (NEW) --- */
+        /* --- COMPARISON --- */
         .comparison { padding: 6rem 0; background: #121214; border-top: 1px solid #27272a; border-bottom: 1px solid #27272a; }
         .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
         .comparison-col h3 { font-size: 1.8rem; margin-bottom: 2rem; }
@@ -185,7 +205,7 @@
         .comparison-col.bad i { color: var(--accent-red); font-size: 1.2rem; min-width: 25px; }
         .comparison-col.good i { color: var(--accent-green); font-size: 1.2rem; min-width: 25px; }
 
-        /* --- QUOTES (NEW) --- */
+        /* --- QUOTES --- */
         .quotes-section { padding: 6rem 0; text-align: center; }
         .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 3rem; margin-top: 3rem; }
         .quote-card { background: rgba(255,255,255,0.03); padding: 2rem; border-radius: 16px; border: 1px solid #27272a; }
@@ -193,7 +213,7 @@
         .quote-author { font-weight: 700; color: var(--accent); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
         .quote-role { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
 
-        /* --- FAQ (NEW) --- */
+        /* --- FAQ --- */
         .faq { padding: 6rem 0; max-width: 800px; margin: 0 auto; }
         .faq-item { border-bottom: 1px solid #27272a; padding: 2rem 0; }
         .faq-item:last-child { border-bottom: none; }
@@ -222,20 +242,22 @@
 
     <div class="container">
         <header>
-            <div class="logo">Intrinsic.</div>
+            <div class="logo">
+                <img src="App Icon/AppIcons/icon-transparent.png" alt="Intrinsic Logo" class="logo-img">
+                <span class="logo-text">Intrinsic.</span>
+            </div>
             <nav>
-                <a href="Intrinsic-v1.0.dmg" download class="btn" style="margin:0; padding: 0.6rem 1.2rem; font-size: 0.9rem;">Download v1.0</a>
+                <a href="app version/Intrinsic-v1.0.dmg" download class="btn" style="margin:0; padding: 0.6rem 1.2rem; font-size: 0.9rem;">Download v1.0</a>
             </nav>
         </header>
 
         <section class="hero">
             <h1>Invest with institutional<br>precision.</h1>
             <p>
-                Stop guessing. Leverage the power of Automated DCF, 
-                Reverse DCF, and Lynch Ratios to uncover the true value of any stock.
+                Stop guessing. Turn complex financial data into clear buy signals using our suite of automated valuation engines.
             </p>
             <div>
-                <a href="Intrinsic-v1.0.dmg" download class="btn"><i class="fa-brands fa-apple"></i> Download for Mac</a>
+                <a href="app version/Intrinsic-v1.0.dmg" download class="btn"><i class="fa-brands fa-apple"></i> Download for Mac</a>
                 <a href="#features" class="btn btn-secondary">Learn More</a>
             </div>
 
@@ -245,13 +267,19 @@
                 
                 <div class="carousel-track" id="track">
                     <div class="carousel-slide">
-                        <img src="screen1.png" alt="Intrinsic DCF View">
+                        <img src="images/screen1.png">
                     </div>
                     <div class="carousel-slide">
-                        <img src="screen2.png" alt="Intrinsic Reverse DCF">
+                        <img src="images/screen2.png">
                     </div>
                     <div class="carousel-slide">
-                        <img src="screen3.png" alt="Intrinsic Sensitivity Matrix">
+                        <img src="images/screen3.png">
+                    </div>
+                    <div class="carousel-slide">
+                        <img src="images/screen4.png">
+                    </div>
+                    <div class="carousel-slide">
+                        <img src="images/screen5.png">
                     </div>
                 </div>
             </div>
@@ -260,54 +288,62 @@
         <section id="features" class="features">
             <div style="text-align: center;">
                 <h2>A complete valuation suite.</h2>
-                <p>Everything you need to determine the buy price, in one view.</p>
+                <p>9 powerful tools to determine the buy price, all in one view.</p>
             </div>
             
             <div class="grid">
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-calculator"></i></div>
                     <h3>Automated DCF</h3>
-                    <p>Instant intrinsic value calculation. 5-year projections based on FCF, fully customizable assumptions.</p>
+                    <p>Instant intrinsic value calculation. 5-year projections based on FCF with automated Finnhub data fetching.</p>
                 </div>
+
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
                     <h3>Reverse DCF</h3>
                     <p>Reality check. See exactly what growth rate the market price implies, and compare it to yours.</p>
                 </div>
+
                 <div class="card">
-                    <div class="icon"><i class="fa-solid fa-sliders"></i></div>
-                    <h3>Dynamic Entry Planner</h3>
-                    <p>Set your desired <strong>Margin of Safety</strong> via a slider. The app tells you the exact price to wait for.</p>
+                    <div class="icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                    <h3>Magic WACC</h3>
+                    <p>Stop guessing the discount rate. We automatically calculate WACC based on live Beta and Risk-Free rates.</p>
                 </div>
+
                 <div class="card">
-                    <div class="icon"><i class="fa-solid fa-layer-group"></i></div>
-                    <h3>P/E Reality Check</h3>
-                    <p>Compare your exit assumptions with historical and current multiples to avoid overvaluation.</p>
+                    <div class="icon"><i class="fa-solid fa-gauge-high"></i></div>
+                    <h3>Exotic Beta Gauge</h3>
+                    <p>Visual risk assessment. Instantly see if a stock is Low Volatility, Market Average, or Speculative.</p>
                 </div>
+
                 <div class="card">
-                    <div class="icon"><i class="fa-solid fa-money-bill-trend-up"></i></div>
-                    <h3>FCF Yield Gauge</h3>
-                    <p>The "Market Payback". Instantly see how much free cash flow the company generates relative to its price.</p>
+                    <div class="icon"><i class="fa-solid fa-users-viewfinder"></i></div>
+                    <h3>Competitor Analysis</h3>
+                    <p>Context matters. Automatically compares your stock's P/E ratio against its top 3 direct industry peers.</p>
                 </div>
+
+                <div class="card">
+                    <div class="icon"><i class="fa-solid fa-table-cells"></i></div>
+                    <h3>Sensitivity Matrix</h3>
+                    <p>7x7 Heatmap. Visualize how small changes in discount rates and growth estimates impact the fair value.</p>
+                </div>
+
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-scale-balanced"></i></div>
                     <h3>PEG Ratio (Lynch)</h3>
                     <p>Growth-adjusted valuation. Determine if a high P/E is justified by the company's growth rate.</p>
                 </div>
+
                 <div class="card">
-                    <div class="icon"><i class="fa-solid fa-table-cells"></i></div>
-                    <h3>Sensitivity Matrix</h3>
-                    <p>7x7 Heatmap. Visualize how changes in discount rates and growth estimates impact fair value.</p>
+                    <div class="icon"><i class="fa-solid fa-money-bill-trend-up"></i></div>
+                    <h3>FCF Yield Gauge</h3>
+                    <p>The "Market Payback". Instantly see how much free cash flow the company generates relative to its price.</p>
                 </div>
+
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-heart-pulse"></i></div>
                     <h3>Risk Assessment</h3>
-                    <p>Visual Balance Sheet check. Net Cash vs. Debt analysis to ensure the company is solvent.</p>
-                </div>
-                <div class="card">
-                    <div class="icon"><i class="fa-solid fa-globe"></i></div>
-                    <h3>Multi-Currency</h3>
-                    <p>Native support for international stocks. Ticker input automatically detects currency (€, $, £, ¥).</p>
+                    <p>Visual Balance Sheet check. Net Cash vs. Debt analysis bars to ensure the company is solvent.</p>
                 </div>
             </div>
         </section>
@@ -330,7 +366,7 @@
                             <li><i class="fa-solid fa-check"></i> <strong>Automated</strong> financial data fetching</li>
                             <li><i class="fa-solid fa-check"></i> Error-free, tested financial models</li>
                             <li><i class="fa-solid fa-check"></i> Clean, focused macOS native UI</li>
-                            <li><i class="fa-solid fa-check"></i> <strong>30 seconds</strong> per valuation</li>
+                            <li><i class="fa-solid fa-check"></i> <strong>10 seconds</strong> per valuation</li>
                         </ul>
                     </div>
                 </div>
@@ -375,7 +411,7 @@
 
                 <div class="faq-item">
                     <h3>Which stock markets are supported?</h3>
-                    <p>We support all major global exchanges including NYSE, NASDAQ, LSE, Euronext, TSX, and many Asian markets. Simply type the ticker (e.g., "AIR.PA" for Airbus).</p>
+                    <p>We support only US major global exchanges including NYSE, NASDAQ. Simply type the ticker.</p>
                 </div>
 
                 <div class="faq-item">
