@@ -1,6 +1,2 @@
 - acheter nom de domaine
-- bouton sauvegarder pour save les données.
-- bouton importer data pour pouvoir importer données
-- graphique différence prix actuel par rapport à son ATH
-- graphique différence prix actuel avec PRU --> combien un achat de x positions nous donnera comme pru ?
-- récupérer données via une API
+- mettre des hover animations sur chaque graphe pour lire les données précises et on est bon pour la v2.0

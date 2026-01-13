@@ -1,8 +1,7 @@
 import SwiftUI
 import Charts
 
-// --- MODELS INTERNES (DTOs) - Nettoyés pour Swift 6 ---
-// Pas de 'Sendable' ici car ils restent internes à l'actor
+// MARK: - 1. MODELS (DTOs)
 
 struct FinnhubQuote: Codable {
     let c: Double
@@ -30,6 +29,22 @@ struct FinnhubSeriesAnnual: Codable {
 struct FinnhubSeriesDataPoint: Codable {
     let period: String?
     let v: Double?
+}
+
+// --- NOUVEAU : Recommandations Analystes ---
+struct FinnhubRecommendation: Codable, Identifiable, Sendable {
+    let id = UUID()
+    let buy: Int
+    let hold: Int
+    let period: String
+    let sell: Int
+    let strongBuy: Int
+    let strongSell: Int
+    let symbol: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case buy, hold, period, sell, strongBuy, strongSell, symbol
+    }
 }
 
 struct ExchangeRateResponse: Codable {
@@ -72,7 +87,7 @@ struct FinnhubProfile: Codable {
     let name: String?
 }
 
-// --- APP ENUMS & STRUCTS (UI Models) ---
+// MARK: - 2. APP MODELS (UI)
 
 enum ValuationMethod: String, CaseIterable, Identifiable {
     case gordon = "Conservative (Perpetual)"
@@ -99,13 +114,23 @@ struct PeerData: Identifiable, Sendable {
     let pe: Double
 }
 
-// --- FINNHUB SERVICE ---
+// Pour le graphique des recommandations (Aplatir les données)
+struct RecChartItem: Identifiable {
+    let id = UUID()
+    let period: String
+    let type: String
+    let value: Int
+    let color: Color
+    // order n'est plus strictement nécessaire si on insère dans l'ordre, mais peut servir
+    let order: Int
+}
+
+// MARK: - 3. SERVICE (Actor)
 
 actor FinnhubService {
     private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0"
     private let exchangeRateApiKey = "2d3a18191c2ffd303066358c"
     
-    // Structure de sortie (Doit être Sendable pour l'UI)
     struct StockData: Sendable {
         let price: Double
         let currency: String
@@ -140,6 +165,21 @@ actor FinnhubService {
         return 1.0
     }
     
+    // Récupération des recommandations
+    func fetchRecommendations(symbol: String) async -> [FinnhubRecommendation] {
+        let urlString = "https://finnhub.io/api/v1/stock/recommendation?symbol=\(symbol)&token=\(finnhubApiKey)"
+        guard let url = URL(string: urlString) else { return [] }
+        
+        do {
+            let recs = try await fetchAndDecode(url: url, type: [FinnhubRecommendation].self, label: "RECS")
+            // On retourne les 4 plus récentes pour le graphe
+            return Array(recs.prefix(4))
+        } catch {
+            print("❌ Erreur Recs: \(error)")
+            return []
+        }
+    }
+    
     func fetchPeersComparison(symbol: String) async -> [PeerData] {
         let peersURL = URL(string: "https://finnhub.io/api/v1/stock/peers?symbol=\(symbol)&token=\(finnhubApiKey)")!
         guard let peersList = try? await fetchAndDecode(url: peersURL, type: [String].self, label: "PEERS") else { return [] }
@@ -168,6 +208,7 @@ actor FinnhubService {
     }
     
     func fetchStockData(symbol: String) async throws -> StockData {
+        print("\n--- 🟢 DÉBUT ANALYSE : \(symbol) ---")
         let cleanSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         
         let quoteURL = URL(string: "https://finnhub.io/api/v1/quote?symbol=\(cleanSymbol)&token=\(finnhubApiKey)")!
@@ -269,7 +310,7 @@ actor FinnhubService {
     }
 }
 
-// --- MAIN VIEW ---
+// MARK: - 4. MAIN VIEW
 
 struct ContentView: View {
     @State private var ticker: String = "NVDA"
@@ -280,7 +321,12 @@ struct ContentView: View {
     @State private var yearHigh: Double = 0.0
     @State private var currencySymbol: String = "$"
     @State private var isSidebarVisible: Bool = true
+    
+    // --- SIDEBAR RESIZE ---
+    @State private var sidebarWidth: CGFloat = 320
+    @State private var lastSidebarWidth: CGFloat = 320
 
+    // Inputs Financiers
     @State private var fcfInput: String = "0.00"
     @State private var sharesInput: String = "0.00"
     @State private var cashInput: String = "0.00"
@@ -290,6 +336,7 @@ struct ContentView: View {
     @State private var fcfCagrDisplay: String? = nil
     @State private var betaInput: Double? = nil
 
+    // Paramètres DCF
     @State private var growthRate: Double = 0.0
     @State private var discountRate: Double = 0.0
     @State private var exitMultiple: Double = 0.0
@@ -298,27 +345,40 @@ struct ContentView: View {
     @State private var terminalGrowth: Double = 0.0
     @State private var marginOfSafety: Double = 10.0
     
+    // Résultats
     @State private var intrinsicValue: Double = 0.0
     @State private var marketImpliedGrowth: Double = 0.0
     @State private var projectionData: [ProjectionPoint] = []
     
-    // ETAT CRITIQUE : Gère l'affichage des résultats
     @State private var hasCalculated: Bool = false
     
-    // NEW DATA STATES
+    // Données Externes
     @State private var peersData: [PeerData] = []
+    // --- NOUVEAU : Data Recs ---
+    @State private var recommendationData: [FinnhubRecommendation] = []
     
     private let finnhubService = FinnhubService()
 
     var body: some View {
         HStack(spacing: 0) {
             
-            // SIDEBAR
+            // --- SIDEBAR RESIZABLE ---
             if isSidebarVisible {
                 VStack(spacing: 0) {
                     HStack {
                         Text("DCF Parameters").font(.headline)
                         Spacer()
+                        
+                        // --- BOUTON POUBELLE (CLEAR) ---
+                        Button(action: clearAllData) {
+                            Image(systemName: "trash").foregroundColor(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clear all inputs")
+                        .padding(.trailing, 10)
+                        
+                        Divider().frame(height: 15).padding(.horizontal, 5)
+                        
                         Button(action: { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isSidebarVisible = false } }) {
                             Image(systemName: "sidebar.left").foregroundColor(.primary)
                         }
@@ -368,6 +428,7 @@ struct ContentView: View {
                             inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
                             inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in %")
                             
+                            // Bouton Magic WACC
                             if let beta = betaInput {
                                 let riskFree = 4.2
                                 let riskPremium = 5.0
@@ -394,18 +455,45 @@ struct ContentView: View {
                         Text("CALCULATE").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
                     }
                     .buttonStyle(.borderedProminent).controlSize(.large).padding().background(Color(nsColor: .windowBackgroundColor))
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
-                .frame(width: 320).transition(.move(edge: .leading))
+                .frame(width: sidebarWidth)
+                .transition(.move(edge: .leading))
             }
             
-            if isSidebarVisible { Divider() }
+            // --- RESIZE HANDLE ---
+            if isSidebarVisible {
+                Divider()
+                    .overlay(Color.gray.opacity(0.1))
+                    .frame(width: 5)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() }
+                        else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                var transaction = Transaction()
+                                transaction.disablesAnimations = true
+                                withTransaction(transaction) {
+                                    let newWidth = lastSidebarWidth + value.translation.width
+                                    if newWidth > 250 && newWidth < 600 {
+                                        sidebarWidth = newWidth
+                                    }
+                                }
+                            }
+                            .onEnded { _ in
+                                lastSidebarWidth = sidebarWidth
+                            }
+                    )
+            }
             
-            // MAIN CONTENT
+            // --- MAIN CONTENT ---
             ZStack(alignment: .topLeading) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
             
                 ScrollView {
-                    // CONDITION D'AFFICHAGE : Rien ne s'affiche tant que !hasCalculated
                     if hasCalculated {
                         VStack(spacing: 30) {
                             ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
@@ -419,11 +507,13 @@ struct ContentView: View {
                             if currentPrice > 0 {
                                 ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
                                     .frame(height: 180).padding(.horizontal)
+                                    .drawingGroup()
                             }
                             
                             if !projectionData.isEmpty {
                                 ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
                                     .padding(.horizontal)
+                                    .drawingGroup()
                             }
                             
                             SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
@@ -438,10 +528,17 @@ struct ContentView: View {
                             )
                             .padding(.horizontal)
                             
-                            // PEERS COMPARISON
+                            // --- NOUVEAU : GRAPH RECOMMANDATIONS AVEC HOVER ET DATE COMPLETE ---
+                            if !recommendationData.isEmpty {
+                                AnalystConsensusChart(data: recommendationData)
+                                    .padding(.horizontal)
+                                    // NOTE: Le .drawingGroup() est retiré ici pour permettre l'interaction (hover)
+                            }
+                            
                             if !peersData.isEmpty {
                                 PeersComparisonView(mainTicker: ticker, mainPE: parseDouble(currentPEInput), peers: peersData)
                                     .padding(.horizontal)
+                                    .drawingGroup()
                             }
                             
                             PEComparisonChart(
@@ -450,6 +547,7 @@ struct ContentView: View {
                                 exitMultiple: exitMultiple
                             )
                             .padding(.horizontal)
+                            .drawingGroup()
                             
                             if parseDouble(currentPEInput) > 0 && growthRate > 0 {
                                 PEGRatioGauge(
@@ -482,22 +580,22 @@ struct ContentView: View {
                                 }
                             }
                             
-                            // EXOTIC BETA GAUGE (MOVED TO BOTTOM)
                             if let beta = betaInput {
                                 ExoticBetaGauge(beta: beta)
                                     .padding(.horizontal)
                                     .padding(.bottom, 50)
+                            } else {
+                                Color.clear.frame(height: 50)
                             }
                         }
                         .frame(maxWidth: .infinity).padding(.horizontal, 20)
                     } else {
-                        // Placeholder si on n'a pas encore calculé
                         VStack {
                             Spacer()
                             Image(systemName: "chart.line.uptrend.xyaxis")
                                 .font(.system(size: 60))
                                 .foregroundColor(.secondary.opacity(0.3))
-                            Text("Load ticker and press Calculate")
+                            Text("Load a ticker and press Calculate")
                                 .font(.title2)
                                 .foregroundColor(.secondary.opacity(0.5))
                                 .padding(.top)
@@ -518,6 +616,38 @@ struct ContentView: View {
     
     // --- LOGIC ---
     
+    func clearAllData() {
+        withAnimation {
+            ticker = ""
+            stockName = ""
+            priceDisplay = "---"
+            currentPrice = 0.0
+            yearHigh = 0.0
+            currencySymbol = "$"
+            
+            fcfInput = "0.00"
+            sharesInput = "0.00"
+            cashInput = "0.00"
+            debtInput = "0.00"
+            currentPEInput = "0.00"
+            historicalPEInput = "0.00"
+            fcfCagrDisplay = nil
+            betaInput = nil
+            
+            growthRate = 0.0
+            discountRate = 0.0
+            exitMultiple = 0.0
+            
+            intrinsicValue = 0.0
+            marketImpliedGrowth = 0.0
+            projectionData = []
+            peersData = []
+            recommendationData = []
+            
+            hasCalculated = false
+        }
+    }
+    
     func fetchFinnhubData() {
         let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !cleanTicker.isEmpty else { return }
@@ -525,8 +655,8 @@ struct ContentView: View {
         isLoading = true
         priceDisplay = "Loading..."
         peersData = []
+        recommendationData = []
         
-        // RESET DE L'UI AU CHARGEMENT D'UN NOUVEAU TICKER
         withAnimation {
             self.hasCalculated = false
             self.intrinsicValue = 0.0
@@ -534,7 +664,6 @@ struct ContentView: View {
         }
         
         Task {
-            // 1. Fetch Main Stock Data
             if let data = try? await finnhubService.fetchStockData(symbol: cleanTicker) {
                 await MainActor.run {
                     self.currentPrice = data.price
@@ -554,15 +683,21 @@ struct ContentView: View {
                     if let cagr = data.fcfCagr { self.fcfCagrDisplay = String(format: "%.1f%%", cagr) }
                     else { self.fcfCagrDisplay = nil }
                     
-                    // ON NE LANCE PLUS LE CALCUL ICI AUTOMATIQUEMENT
+                    self.isLoading = false
                 }
+            } else {
+                 await MainActor.run { self.isLoading = false; self.priceDisplay = "Error" }
             }
             
-            // 2. Fetch Peers (Parallel)
-            let peers = await finnhubService.fetchPeersComparison(symbol: cleanTicker)
+            // Appels Parallèles
+            async let peersFetch = finnhubService.fetchPeersComparison(symbol: cleanTicker)
+            async let recsFetch = finnhubService.fetchRecommendations(symbol: cleanTicker)
+            
+            let (peers, recs) = await (peersFetch, recsFetch)
+            
             await MainActor.run {
                 self.peersData = peers
-                self.isLoading = false
+                self.recommendationData = recs
             }
         }
     }
@@ -647,19 +782,120 @@ struct ContentView: View {
     }
 }
 
-// --- EXOTIC BETA GAUGE ---
+// MARK: - 5. SUBVIEWS (GRAPHS & COMPONENTS)
 
+// --- NOUVEAU : Graphique Recommandations (Stacked Bar avec Date Complète et Tooltip) ---
+struct AnalystConsensusChart: View {
+    let data: [FinnhubRecommendation]
+    @State private var selectedPeriod: String? // Stocke la période sélectionnée au survol
+    
+    // Transforme les données brutes en données plates pour le Chart
+    var chartData: [RecChartItem] {
+        var items: [RecChartItem] = []
+        for rec in data {
+            // Utilisation de la date complète pour l'axe X
+            let dateLabel = rec.period
+            
+            items.append(RecChartItem(period: dateLabel, type: "Strong Buy", value: rec.strongBuy, color: .green, order: 0))
+            items.append(RecChartItem(period: dateLabel, type: "Buy", value: rec.buy, color: .mint, order: 1))
+            items.append(RecChartItem(period: dateLabel, type: "Hold", value: rec.hold, color: .yellow, order: 2))
+            items.append(RecChartItem(period: dateLabel, type: "Sell", value: rec.sell, color: .orange, order: 3))
+            items.append(RecChartItem(period: dateLabel, type: "Strong Sell", value: rec.strongSell, color: .red, order: 4))
+        }
+        return items
+    }
+    
+    // Fonction helper pour récupérer les données d'une période spécifique
+    func getDataForPeriod(_ period: String) -> FinnhubRecommendation? {
+        return data.first { $0.period == period }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "person.wave.2.fill").font(.title2).foregroundColor(.blue)
+                Text("Analyst Consensus Trend").font(.headline).foregroundColor(.secondary)
+            }
+            
+            Chart {
+                ForEach(chartData) { item in
+                    BarMark(
+                        x: .value("Period", item.period),
+                        y: .value("Count", item.value)
+                    )
+                    .foregroundStyle(item.color)
+                }
+                
+                // Interaction : Affiche une règle et le tooltip si une période est sélectionnée
+                if let selectedPeriod, let rec = getDataForPeriod(selectedPeriod) {
+                    RuleMark(x: .value("Period", selectedPeriod))
+                        .foregroundStyle(Color.gray.opacity(0.3))
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5]))
+                        .annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
+                            // LE TOOLTIP (Bulle d'info)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Period: \(selectedPeriod)").font(.caption).bold().foregroundColor(.secondary)
+                                Divider()
+                                tooltipRow(label: "Strong Buy", value: rec.strongBuy, color: .green)
+                                tooltipRow(label: "Buy", value: rec.buy, color: .mint)
+                                tooltipRow(label: "Hold", value: rec.hold, color: .yellow)
+                                tooltipRow(label: "Sell", value: rec.sell, color: .orange)
+                                tooltipRow(label: "Strong Sell", value: rec.strongSell, color: .red)
+                            }
+                            .padding(8)
+                            .background(.regularMaterial)
+                            .cornerRadius(8)
+                            .shadow(radius: 4)
+                        }
+                }
+            }
+            .chartForegroundStyleScale([
+                "Strong Buy": .green,
+                "Buy": .mint,
+                "Hold": .yellow,
+                "Sell": .orange,
+                "Strong Sell": .red
+            ])
+            .frame(height: 250) // Hauteur augmentée pour le tooltip
+            // GESTION DU SURVOL (HOVER)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                // Trouve la valeur X (période) sous la souris
+                                let xValue: String? = proxy.value(atX: location.x)
+                                selectedPeriod = xValue
+                            case .ended:
+                                selectedPeriod = nil
+                            }
+                        }
+                }
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+    }
+    
+    // Vue helper pour les lignes du tooltip
+    func tooltipRow(label: String, value: Int, color: Color) -> some View {
+        HStack {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(label).font(.caption2).foregroundColor(.primary)
+            Spacer()
+            Text("\(value)").font(.caption2).bold()
+        }
+    }
+}
+
+// --- EXOTIC BETA GAUGE (FULL BLUE VERSION) ---
 struct ExoticBetaGauge: View {
     let beta: Double
     private var normalizedBeta: Double { min(max(beta, 0.0), 3.0) / 3.0 }
-    
-    private var colorZone: Color {
-        if beta < 0.8 { return .green }
-        if beta < 1.2 { return .yellow }
-        if beta < 2.0 { return .orange }
-        return .blue
-    }
-    
+    private var colorZone: Color { return .blue }
     private var riskText: String {
         if beta < 0.8 { return "LOW VOLATILITY" }
         if beta < 1.2 { return "MARKET AVG" }
@@ -670,10 +906,10 @@ struct ExoticBetaGauge: View {
     var body: some View {
         VStack(spacing: 5) {
             HStack {
-                Image(systemName: "bolt.horizontal.circle.fill").foregroundColor(.blue)
-                Text("Market Volatility (Beta)").font(.headline).foregroundColor(.secondary)
+                Image(systemName: "bolt.horizontal.circle.fill").foregroundColor(colorZone)
+                Text("MARKET RISK (BETA)").font(.headline).foregroundColor(.secondary)
                 Spacer()
-                Text(String(format: "%.2f", beta)).font(.title2).fontWeight(.black).foregroundColor(.blue)
+                Text(String(format: "%.2f", beta)).font(.title2).fontWeight(.black).foregroundColor(colorZone)
             }
             ZStack {
                 Circle()
@@ -686,7 +922,8 @@ struct ExoticBetaGauge: View {
                     .stroke(
                         AngularGradient(
                             gradient: Gradient(colors: [
-                                Color.blue,
+                                Color.blue.opacity(0.3),
+                                Color.blue
                             ]),
                             center: .center,
                             startAngle: .degrees(180),
@@ -737,8 +974,7 @@ struct ExoticBetaGauge: View {
     }
 }
 
-// --- SUBVIEWS ---
-
+// --- PEERS COMPARISON (BLUE ICON) ---
 struct PeersComparisonView: View {
     let mainTicker: String
     let mainPE: Double
@@ -746,7 +982,7 @@ struct PeersComparisonView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
-                Image(systemName: "person.3.fill").font(.title2).foregroundColor(.blue)
+                Image(systemName: "person.3.fill").font(.title2).foregroundColor(.blue) // Icône Bleue
                 Text("Competitor Analysis (P/E)").font(.headline).foregroundColor(.secondary)
             }
             if mainPE == 0 {
@@ -943,13 +1179,22 @@ struct SensitivityMatrixView: View {
 struct PEComparisonChart: View {
     var currentPE: Double; var historicalPE: Double; var exitMultiple: Double
     var data: [PEDataPoint] {
-        [.init(type: "Historical", value: historicalPE, color: .gray.opacity(0.5)), .init(type: "Current", value: currentPE, color: .gray), .init(type: "Exit (Yr 5)", value: exitMultiple, color: .blue)]
+        [.init(type: "Historical", value: historicalPE, color: .gray.opacity(0.5)),
+         .init(type: "Current", value: currentPE, color: .gray),
+         .init(type: "Exit (Yr 5)", value: exitMultiple, color: .blue)]
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
-            HStack { Image(systemName: "chart.bar.xaxis").font(.title2).foregroundColor(.blue); Text("Valuation Reality Check (P/E Ratios)").font(.headline).foregroundColor(.secondary) }
-            if currentPE == 0 && historicalPE == 0 && exitMultiple == 0 { Text("Enter P/E data to visualize comparison").font(.caption).italic().foregroundColor(.secondary) } else {
-                Chart(data) { point in BarMark(x: .value("Type", point.type), y: .value("P/E Ratio", point.value)).foregroundStyle(point.color.gradient).annotation(position: .top) { Text(String(format: "%.1fx", point.value)).font(.caption).bold() } }.frame(height: 200)
+            HStack {
+                Image(systemName: "chart.bar.xaxis").font(.title2).foregroundColor(.blue)
+                Text("Valuation Reality Check (P/E Ratios)").font(.headline).foregroundColor(.secondary)
+            }
+            if currentPE == 0 && historicalPE == 0 && exitMultiple == 0 {
+                Text("Enter P/E data to visualize comparison").font(.caption).italic().foregroundColor(.secondary)
+            } else {
+                Chart(data) { point in
+                    BarMark(x: .value("Type", point.type), y: .value("P/E Ratio", point.value)).foregroundStyle(point.color.gradient).annotation(position: .top) { Text(String(format: "%.1fx", point.value)).font(.caption).bold() }
+                }.frame(height: 200)
             }
         }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
@@ -963,7 +1208,11 @@ struct PEGRatioGauge: View {
     var statusColor: Color { peg < 1.0 ? .green : peg < 1.5 ? .yellow : .red }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack { Image(systemName: "gauge.with.needle").font(.title2).foregroundColor(.blue); Text("PEG Ratio (Lynch Valuation)").font(.headline).foregroundColor(.secondary); Spacer(); Text(String(format: "%.2f", peg)).font(.title2).bold().foregroundColor(statusColor) }
+            HStack {
+                Image(systemName: "gauge.with.needle").font(.title2).foregroundColor(.blue)
+                Text("PEG Ratio (Lynch Valuation)").font(.headline).foregroundColor(.secondary)
+                Spacer(); Text(String(format: "%.2f", peg)).font(.title2).bold().foregroundColor(statusColor)
+            }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle().fill(LinearGradient(stops: [.init(color: .green.opacity(0.8), location: 0.0), .init(color: .green.opacity(0.8), location: 0.33), .init(color: .yellow, location: 0.33), .init(color: .yellow, location: 0.5), .init(color: .red.opacity(0.8), location: 0.5), .init(color: .red.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10)
@@ -984,7 +1233,12 @@ struct FCFYieldGauge: View {
     var statusColor: Color { if yield < 3.0 { return .red } else if yield < 7.0 { return .yellow } else { return .green } }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack { Image(systemName: "banknote.fill").font(.title2).foregroundColor(.blue); Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.blue); Spacer(); Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor) }
+            HStack {
+                Image(systemName: "banknote.fill").font(.title2).foregroundColor(.blue)
+                Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.blue)
+                Spacer()
+                Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor)
+            }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle().fill(LinearGradient(stops: [.init(color: .red.opacity(0.8), location: 0.0), .init(color: .red.opacity(0.8), location: 0.3), .init(color: .yellow, location: 0.3), .init(color: .yellow, location: 0.7), .init(color: .green.opacity(0.8), location: 0.7), .init(color: .green.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10)
@@ -1030,15 +1284,26 @@ struct ProjectedGrowthChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             VStack(alignment: .leading, spacing: 5) {
-                HStack { Image(systemName: "chart.line.uptrend.xyaxis").font(.title2).foregroundColor(.blue); Text("Value Projection vs Price").font(.headline).foregroundColor(.secondary) }
-                HStack(spacing: 15) { HStack(spacing: 5) { Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption); Text("Intrinsic Value").font(.caption).bold() }; HStack(spacing: 5) { Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption); Text("Current Price").font(.caption).bold() } }
+                HStack {
+                    Image(systemName: "chart.line.uptrend.xyaxis").font(.title2).foregroundColor(.blue)
+                    Text("Value Projection vs Price").font(.headline).foregroundColor(.secondary)
+                }
+                HStack(spacing: 15) {
+                    HStack(spacing: 5) { Image(systemName: "circle.fill").foregroundColor(.blue).font(.caption); Text("Intrinsic Value").font(.caption).bold() }
+                    HStack(spacing: 5) { Image(systemName: "line.horizontal.3").foregroundColor(.red).font(.caption); Text("Current Price").font(.caption).bold() }
+                }
             }
             Chart {
                 RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5])).annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))\(symbol)").font(.caption2).foregroundColor(.red) }
-                ForEach(data) { point in LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone); PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60) }
+                ForEach(data) { point in
+                    LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).lineStyle(StrokeStyle(lineWidth: 3)).interpolationMethod(.monotone)
+                    PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60)
+                }
                 if let selectedYear {
                     RuleMark(x: .value("Year", selectedYear)).foregroundStyle(Color.gray.opacity(0.3)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .disabled)) {
-                        if let point = data.first(where: { $0.year == selectedYear }) { VStack(alignment: .leading, spacing: 4) { Text("Year \(point.year)").font(.caption).bold().foregroundColor(.secondary); Text("Value: \(Int(point.value)) \(symbol)").font(.caption).bold().foregroundColor(.blue) }.padding(6).background(.regularMaterial).cornerRadius(6).shadow(radius: 2) }
+                        if let point = data.first(where: { $0.year == selectedYear }) {
+                            VStack(alignment: .leading, spacing: 4) { Text("Year \(point.year)").font(.caption).bold().foregroundColor(.secondary); Text("Value: \(Int(point.value)) \(symbol)").font(.caption).bold().foregroundColor(.blue) }.padding(6).background(.regularMaterial).cornerRadius(6).shadow(radius: 2)
+                        }
                     }
                 }
             }.chartYScale(domain: yDomain).chartXSelection(value: $selectedYear).chartXScale(domain: 0...5).frame(height: 250)
