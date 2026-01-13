@@ -125,7 +125,7 @@ struct RecChartItem: Identifiable {
 // MARK: - 3. SERVICE (Actor)
 
 actor FinnhubService {
-    private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0" // Ta clé API
+    private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0"
     private let exchangeRateApiKey = "2d3a18191c2ffd303066358c"
     
     struct StockData: Sendable {
@@ -339,18 +339,34 @@ struct ContentView: View {
     @State private var peersData: [PeerData] = []
     @State private var recommendationData: [FinnhubRecommendation] = []
     
+    // --- NOUVEAU : État pour le Popover d'aide ---
+    @State private var showHelp: Bool = false
+    
     private let finnhubService = FinnhubService()
 
     var body: some View {
         HStack(spacing: 0) {
             
-            // --- SIDEBAR ---
             if isSidebarVisible {
                 VStack(spacing: 0) {
                     HStack {
                         Text("DCF Parameters").font(.headline)
                         Spacer()
                         
+                        // --- BOUTON AIDE (?) ---
+                        Button(action: { showHelp.toggle() }) {
+                            Image(systemName: "questionmark.circle")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.blue)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Explain DCF Method")
+                        .padding(.trailing, 8)
+                        .popover(isPresented: $showHelp) {
+                            DCFHelpView() // Affiche la vue d'aide
+                        }
+                        
+                        // --- BOUTON POUBELLE (CLEAR) ---
                         Button(action: clearAllData) {
                             Image(systemName: "trash").foregroundColor(.red)
                         }
@@ -446,7 +462,7 @@ struct ContentView: View {
                             
                             if currentPrice > 0 {
                                 ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
-                                    .frame(height: 250).padding(.horizontal)
+                                    .frame(height: 300).padding(.horizontal)
                             }
                             
                             if !projectionData.isEmpty {
@@ -865,6 +881,74 @@ struct ExoticBetaGauge: View {
 struct InfoButton: View {
     let helpText: String; @State private var show = false
     var body: some View { Button(action: { show.toggle() }) { Image(systemName: "info.circle").foregroundColor(.secondary) }.buttonStyle(.plain).popover(isPresented: $show) { Text(helpText).padding().frame(width: 250) } }
+}
+
+// MARK: - 16. DCF HELP VIEW (AIDE)
+struct DCFHelpView: View {
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Image(systemName: "graduationcap.fill").font(.title2).foregroundColor(.blue)
+                    Text("Understanding DCF").font(.title3).bold()
+                    Spacer()
+                }
+                
+                Text("Discounted Cash Flow (DCF) is a valuation method used to estimate the value of an investment based on its expected future cash flows.")
+                    .font(.body)
+                
+                Text("The core principle is that a dollar today is worth more than a dollar tomorrow. This tool projects how much cash the company will generate in the future and 'discounts' it back to arrive at a fair price today.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                
+                Divider()
+                
+                Text("Key Inputs Explained").font(.headline)
+                
+                VStack(alignment: .leading, spacing: 10) {
+                    ExplanationRow(
+                        title: "FCF Growth Rate",
+                        desc: "The percentage by which you expect the company's cash flow to grow annually for the next 5 years. Be conservative."
+                    )
+                    
+                    ExplanationRow(
+                        title: "Discount Rate (WACC)",
+                        desc: "The annual return you demand for the risk taken. Higher risk requires a higher rate. This number reduces the value of future money."
+                    )
+                    
+                    ExplanationRow(
+                        title: "Exit Multiple",
+                        desc: "The valuation ratio (Price/FCF) you expect the market will pay for this stock after 5 years. Often aligned with historical averages."
+                    )
+                }
+            }
+            .padding()
+        }
+        .frame(width: 400, height: 500)
+    }
+}
+
+struct ExplanationRow: View {
+    let title: String
+    let desc: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline)
+                .bold()
+                .foregroundColor(.blue)
+            Text(desc)
+                .font(.caption)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+    }
 }
 
 // UTILS

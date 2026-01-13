@@ -113,6 +113,40 @@
             background: #333;
             box-shadow: none;
         }
+        /* --- V2.0 NEW SECTION --- */
+        .v2-update {
+            padding: 4rem 0;
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.05) 0%, rgba(0,0,0,0) 100%);
+            border-top: 1px solid #27272a;
+            border-bottom: 1px solid #27272a;
+            margin-top: 4rem;
+        }
+        .v2-badge {
+            background: var(--accent);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 800;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+        .v2-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        .v2-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-align: left;
+        }
+        .v2-item h4 { font-size: 1.1rem; color: #fff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 10px; }
+        .v2-item p { margin: 0; font-size: 0.95rem; line-height: 1.5; color: #888; }
+        .v2-icon { color: var(--accent); font-size: 1.2rem; }
 
         /* --- CAROUSEL --- */
         .app-preview {
@@ -280,6 +314,37 @@
                     </div>
                     <div class="carousel-slide">
                         <img src="images/screen5.png">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="v2-update">
+            <div class="container">
+                <div style="text-align: center;">
+                    <span class="v2-badge">Introducing Intrinsic v2.0</span>
+                    <h2 style="font-size: 2rem;">Smarter. Faster. More Insightful.</h2>
+                </div>
+                
+                <div class="v2-grid">
+                    <div class="v2-item">
+                        <h4><i class="fa-solid fa-bolt v2-icon"></i> Automated Data Engine</h4>
+                        <p>Powered by the <strong>Finnhub API</strong>. Say goodbye to manual entry. We fetch live financials instantly so you can focus on analysis.</p>
+                    </div>
+
+                    <div class="v2-item">
+                        <h4><i class="fa-solid fa-chart-line v2-icon"></i> Expanded Visuals</h4>
+                        <p>4 new institutional-grade charts: <strong>Analyst Consensus Trend</strong>, Competitor PE Analysis, 52-Week Highs, and Beta Risk Gauge.</p>
+                    </div>
+
+                    <div class="v2-item">
+                        <h4><i class="fa-solid fa-gem v2-icon"></i> Refined Aesthetic</h4>
+                        <p>A completely reimagined visual identity. Our new icon features a sleek, <strong>glass-morphism</strong> design that looks native to macOS.</p>
+                    </div>
+
+                    <div class="v2-item">
+                        <h4><i class="fa-solid fa-wand-magic-sparkles v2-icon"></i> Enhanced Workflow</h4>
+                        <p>New tools to speed up your process: a <strong>"Reset"</strong> button for rapid-fire analysis and a built-in educational guide for DCF mastery.</p>
                     </div>
                 </div>
             </div>
