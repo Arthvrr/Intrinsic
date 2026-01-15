@@ -84,6 +84,7 @@ struct FinnhubProfile: Codable, Sendable {
     let ticker: String?
     let exchange: String?
     let name: String?
+    let logo: String? // --- AJOUT : Logo URL ---
 }
 
 // MARK: - 2. APP MODELS (UI)
@@ -125,7 +126,7 @@ struct RecChartItem: Identifiable {
 // MARK: - 3. SERVICE (Actor)
 
 actor FinnhubService {
-    private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0"
+    private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0" // Ta clé API
     private let exchangeRateApiKey = "2d3a18191c2ffd303066358c"
     
     struct StockData: Sendable {
@@ -141,6 +142,7 @@ actor FinnhubService {
         let fcfCagr: Double?
         let name: String
         let beta: Double?
+        let logoUrl: String? // --- AJOUT : Stockage URL Logo ---
     }
     
     private func fetchAndDecode<T: Codable>(url: URL, type: T.Type, label: String) async throws -> T {
@@ -293,7 +295,8 @@ actor FinnhubService {
             yearHigh: adjustedHigh,
             fcfCagr: calculatedCagr,
             name: profileResult?.name ?? symbol,
-            beta: m.beta
+            beta: m.beta,
+            logoUrl: profileResult?.logo // --- AJOUT : Récupération du logo ---
         )
     }
 }
@@ -301,7 +304,7 @@ actor FinnhubService {
 // MARK: - 4. MAIN VIEW
 
 struct ContentView: View {
-    @State private var ticker: String = ""
+    @State private var ticker: String = "" // --- MODIF : Ticker vide par défaut ---
     @State private var stockName: String = ""
     @State private var priceDisplay: String = "---"
     @State private var isLoading = false
@@ -309,6 +312,7 @@ struct ContentView: View {
     @State private var yearHigh: Double = 0.0
     @State private var currencySymbol: String = "$"
     @State private var isSidebarVisible: Bool = true
+    @State private var logoUrl: String? // --- AJOUT : État pour le logo ---
     
     @State private var sidebarWidth: CGFloat = 320
     @State private var lastSidebarWidth: CGFloat = 320
@@ -339,7 +343,6 @@ struct ContentView: View {
     @State private var peersData: [PeerData] = []
     @State private var recommendationData: [FinnhubRecommendation] = []
     
-    // --- NOUVEAU : État pour le Popover d'aide ---
     @State private var showHelp: Bool = false
     
     private let finnhubService = FinnhubService()
@@ -353,7 +356,6 @@ struct ContentView: View {
                         Text("DCF Parameters").font(.headline)
                         Spacer()
                         
-                        // --- BOUTON AIDE (?) ---
                         Button(action: { showHelp.toggle() }) {
                             Image(systemName: "questionmark.circle")
                                 .font(.system(size: 16, weight: .medium))
@@ -363,10 +365,9 @@ struct ContentView: View {
                         .help("Explain DCF Method")
                         .padding(.trailing, 8)
                         .popover(isPresented: $showHelp) {
-                            DCFHelpView() // Affiche la vue d'aide
+                            DCFHelpView()
                         }
                         
-                        // --- BOUTON POUBELLE (CLEAR) ---
                         Button(action: clearAllData) {
                             Image(systemName: "trash").foregroundColor(.red)
                         }
@@ -389,9 +390,25 @@ struct ContentView: View {
                                 TextField("Ticker", text: $ticker).onSubmit { fetchFinnhubData() }
                                 Button("Load") { fetchFinnhubData() }
                             }
+                            
+                            // --- MODIF : Affichage Logo + Nom ---
                             if !stockName.isEmpty {
-                                Text(stockName).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                HStack(spacing: 8) {
+                                    if let logoStr = logoUrl, let url = URL(string: logoStr) {
+                                        AsyncImage(url: url) { phase in
+                                            if let image = phase.image {
+                                                image.resizable().aspectRatio(contentMode: .fit)
+                                            } else {
+                                                Rectangle().fill(Color.gray.opacity(0.2))
+                                            }
+                                        }
+                                        .frame(width: 24, height: 24)
+                                        .cornerRadius(4)
+                                    }
+                                    Text(stockName).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                }
                             }
+                            
                             HStack {
                                 Text("Current Price:"); Spacer()
                                 if isLoading { ProgressView().scaleEffect(0.5) }
@@ -411,7 +428,8 @@ struct ContentView: View {
                             inputRowString(label: "Historical P/E (5Y)", value: $historicalPEInput, helpText: "5-Year Average P/E Ratio")
                         }
                         
-                        Section(header: Text("Estimates"), footer:financeChartsLink) {
+                        // --- MODIF : Ajout du footer financeChartsLink ---
+                        Section(header: Text("Estimates"), footer: financeChartsLink) {
                             if let cagr = fcfCagrDisplay {
                                 HStack { Text("Hist. 5Y FCF CAGR:").font(.caption).foregroundColor(.secondary); Spacer(); Text(cagr).font(.caption).bold().foregroundColor(.blue) }.padding(.bottom, 2)
                             }
@@ -539,7 +557,7 @@ struct ContentView: View {
     func clearAllData() {
         withAnimation {
             ticker = ""; stockName = ""; priceDisplay = "---"; currentPrice = 0.0; yearHigh = 0.0; currencySymbol = "$"
-            fcfInput = "0.00"; sharesInput = "0.00"; cashInput = "0.00"; debtInput = "0.00"; currentPEInput = "0.00"; historicalPEInput = "0.00"; fcfCagrDisplay = nil; betaInput = nil
+            fcfInput = "0.00"; sharesInput = "0.00"; cashInput = "0.00"; debtInput = "0.00"; currentPEInput = "0.00"; historicalPEInput = "0.00"; fcfCagrDisplay = nil; betaInput = nil; logoUrl = nil // Clear logo
             growthRate = 0.0; discountRate = 0.0; exitMultiple = 0.0; intrinsicValue = 0.0; marketImpliedGrowth = 0.0
             projectionData = []; peersData = []; recommendationData = []; hasCalculated = false
         }
@@ -562,6 +580,7 @@ struct ContentView: View {
                     self.currentPEInput = String(format: "%.2f", data.peCurrent)
                     self.historicalPEInput = String(format: "%.2f", data.peHistoricalAvg)
                     self.betaInput = data.beta
+                    self.logoUrl = data.logoUrl // Set logo
                     if let cagr = data.fcfCagr { self.fcfCagrDisplay = String(format: "%.1f%%", cagr) } else { self.fcfCagrDisplay = nil }
                     self.isLoading = false
                 }
@@ -572,9 +591,14 @@ struct ContentView: View {
             await MainActor.run { self.peersData = peers; self.recommendationData = recs }
         }
     }
+    
+    // --- LINKS ---
     var stockAnalysisLink: some View { Link(destination: URL(string: "https://stockanalysis.com/stocks/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))/financials/") ?? URL(string: "https://stockanalysis.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("StockAnalysis Data") }.font(.caption).padding(.top, 5) } }
+    
     var guruFocusLink: some View { Link(destination: URL(string: "https://www.gurufocus.com/term/pettm/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))") ?? URL(string: "https://www.gurufocus.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("GuruFocus P/E Data") }.font(.caption).padding(.top, 5) } }
+    
     var financeChartsLink: some View { Link(destination: URL(string: "https://www.financecharts.com/stocks/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))/growth/free-cash-flow") ?? URL(string: "https://stockanalysis.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("FCF Growth last 5 years") }.font(.caption).padding(.top, 5) } }
+    
     func parseDouble(_ input: String) -> Double { return Double(input.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0 }
     func calculateIntrinsicValue() {
         let result = computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: growthRate, r: discountRate, method: selectedMethod, tg: terminalGrowth, exitMult: exitMultiple)
