@@ -301,7 +301,7 @@ actor FinnhubService {
 // MARK: - 4. MAIN VIEW
 
 struct ContentView: View {
-    @State private var ticker: String = "NVDA"
+    @State private var ticker: String = ""
     @State private var stockName: String = ""
     @State private var priceDisplay: String = "---"
     @State private var isLoading = false
@@ -411,7 +411,7 @@ struct ContentView: View {
                             inputRowString(label: "Historical P/E (5Y)", value: $historicalPEInput, helpText: "5-Year Average P/E Ratio")
                         }
                         
-                        Section(header: Text("Estimates")) {
+                        Section(header: Text("Estimates"), footer:financeChartsLink) {
                             if let cagr = fcfCagrDisplay {
                                 HStack { Text("Hist. 5Y FCF CAGR:").font(.caption).foregroundColor(.secondary); Spacer(); Text(cagr).font(.caption).bold().foregroundColor(.blue) }.padding(.bottom, 2)
                             }
@@ -574,6 +574,7 @@ struct ContentView: View {
     }
     var stockAnalysisLink: some View { Link(destination: URL(string: "https://stockanalysis.com/stocks/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))/financials/") ?? URL(string: "https://stockanalysis.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("StockAnalysis Data") }.font(.caption).padding(.top, 5) } }
     var guruFocusLink: some View { Link(destination: URL(string: "https://www.gurufocus.com/term/pettm/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))") ?? URL(string: "https://www.gurufocus.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("GuruFocus P/E Data") }.font(.caption).padding(.top, 5) } }
+    var financeChartsLink: some View { Link(destination: URL(string: "https://www.financecharts.com/stocks/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))/growth/free-cash-flow") ?? URL(string: "https://stockanalysis.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("FCF Growth last 5 years") }.font(.caption).padding(.top, 5) } }
     func parseDouble(_ input: String) -> Double { return Double(input.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0 }
     func calculateIntrinsicValue() {
         let result = computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: growthRate, r: discountRate, method: selectedMethod, tg: terminalGrowth, exitMult: exitMultiple)
