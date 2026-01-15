@@ -16,9 +16,11 @@
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="screen1.png" width="30%" alt="DCF Valuation" />
-  <img src="screen2.png" width="30%" alt="Reverse DCF" />
-  <img src="screen3.png" width="30%" alt="Sensitivity Matrix" />
+  <img src="images/screen1.png" width="20%"/>
+  <img src="images/screen2.png" width="20%"/>
+  <img src="images/screen3.png" width="20%"/>
+  <img src="images/screen4.png" width="20%"/>
+  <img src="images/screen5.png" width="20%"/>
 </p>
 
 ---
@@ -29,23 +31,31 @@ This software is for educational and informational purposes only. It does not co
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features (v2.0)
 
-### 🧠 Valuation Engines
-* **Automated DCF:** Instantly fetches Free Cash Flow (FCF) data and projects intrinsic value over 5 years.
+### 🧠 Automated Intelligence
+* **Zero-Entry Valuation:** Powered by the **Finnhub API**. Automatically fetches FCF, Cash, Debt, and Shares data. Just type a ticker (e.g., NVDA, AZN.L).
+* **Automated DCF:** Instantly projects intrinsic value over 5 years based on live fundamentals.
+* **Magic WACC:** automatically calculates the Discount Rate based on the stock's real-time **Beta** and Risk-Free rates.
 * **Reverse DCF:** "Sanity check" the market. Calculates the growth rate implied by the current stock price.
-* **Lynch Valuation:** PEG Ratio analysis to contextualize high P/E multiples against growth.
-* **FCF Yield Gauge:** Visualizes the "market payback" yield (Inverse P/FCF).
+
+### 📊 Professional Visualizations
+* **Analyst Consensus Trend:** Interactive stacked bar chart visualizing "Strong Buy" to "Sell" recommendations over time.
+* **Competitor Analysis:** Automatically compares your stock's P/E ratio against its top 3 direct industry peers.
+* **Exotic Beta Gauge:** Visual risk assessment meter (Low Volatility vs. Speculative).
+* **Price Context:** Visualizes the current price relative to its **52-Week High**.
 
 ### 🛡️ Risk Management
 * **Sensitivity Matrix:** An interactive 7x7 Heatmap to stress-test valuations against different Discount Rates and Growth assumptions.
-* **Dynamic Margin of Safety:** Slider-based entry price planning. Know exactly when to buy.
+* **Lynch Valuation:** PEG Ratio analysis to contextualize high P/E multiples against growth.
 * **Financial Health Check:** Visual balance sheet analysis (Net Cash vs. Total Debt).
+* **Dynamic Margin of Safety:** Slider-based entry price planning with immediate visual feedback ("Buy Zone").
 
-### 🚀 Technical Highlights
-* **Privacy First:** All calculations are performed locally on-device. No user data tracking.
-* **Native Performance:** Built with **SwiftUI** and **Swift Charts** for a fluid, responsive experience.
-* **Multi-Currency:** Automatic detection and handling of global currencies (€, $, £, ¥, etc.).
+### 💎 UX & Technical Highlights
+* **Modern Glassmorphism UI:** A completely redesigned, sleek interface that feels native to macOS.
+* **Interactive Charts:** Hover over any data point (Analysts, Peers, Projections) for precise tooltips.
+* **Built-in Education:** Integrated "?" help system explaining DCF concepts for beginners.
+* **Privacy First:** All calculations are performed locally on-device.
 
 ---
 
