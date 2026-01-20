@@ -126,8 +126,20 @@ struct RecChartItem: Identifiable {
 // MARK: - 3. SERVICE (Actor)
 
 actor FinnhubService {
-        
+    
+    // On utilise UserDefaults.standard pour lire les valeurs enregistrées par @AppStorage
+    // Note : Dans un 'actor', on ne peut pas utiliser @AppStorage directement car c'est un wrapper de Vue.
+    
     private var exchangeRateApiKey: String {
+        // 1. Essayer de lire la clé utilisateur
+        let userKey = UserDefaults.standard.string(forKey: "userExchangeRateKey") ?? ""
+        
+        // 2. Si elle existe et n'est pas vide, on l'utilise
+        if !userKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return userKey
+        }
+        
+        // 3. Sinon, on prend la clé par défaut du projet (Config.xcconfig -> Info.plist)
         guard let key = Bundle.main.object(forInfoDictionaryKey: "EXCHANGERATE_API_KEY") as? String else {
             print("⚠️ ERREUR CRITIQUE : Clé API ExchangeRate introuvable dans Info.plist")
             return ""
@@ -136,12 +148,22 @@ actor FinnhubService {
     }
     
     private var finnhubApiKey: String {
+        // 1. Essayer de lire la clé utilisateur
+        let userKey = UserDefaults.standard.string(forKey: "userFinnhubKey") ?? ""
+        
+        // 2. Si elle existe et n'est pas vide, on l'utilise
+        if !userKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return userKey
+        }
+        
+        // 3. Sinon, on prend la clé par défaut du projet
         guard let key = Bundle.main.object(forInfoDictionaryKey: "FINNHUB_API_KEY") as? String else {
             print("⚠️ ERREUR CRITIQUE : Clé API Finnhub introuvable dans Info.plist")
             return ""
         }
         return key
     }
+    
     
     struct StockData: Sendable {
         let price: Double
@@ -346,7 +368,7 @@ struct ContentView: View {
     
     @State private var selectedMethod: ValuationMethod = .multiples
     @State private var terminalGrowth: Double = 0.0
-    @State private var marginOfSafety: Double = 10.0
+    @AppStorage("defaultMarginOfSafety") private var marginOfSafety: Double = 10.0
     
     @State private var intrinsicValue: Double = 0.0
     @State private var marketImpliedGrowth: Double = 0.0
