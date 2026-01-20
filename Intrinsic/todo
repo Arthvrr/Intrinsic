@@ -1,3 +1,11 @@
-- acheter nom de domaine
-- régler problèmes ADR
-- mettre clés API dans un env ou quoi pour les sécuriser
+FINIR 2.0
+
+- acheter nom de domaine (intrinsic-app.eu) 2.0
+- régler problèmes ADR 2.0 --> ne pas afficher graphe 52W-High ?
+- lien vers code github
+
+IDÉES 3.0
+- trouver de nouvelles fonctionnalités (essayer de jouer avec les onglets macos) 3.0
+- ajouter icone dans barre des menus (mais mettre quoi dessus ? bouton ajouter watchlist et mettre dans l'icone de la barre des menus la watchlist : prix action vs prix intrinsèque) 3.0
+- ajouter exportation pdf automatique --> génère un pdf avec graphe tout beau tout propre 3.0
+- feature qui a l'air très dur à mettre en place : obliger l'user à créer un compte, pour qu'il puisse récupérer une clé API à lui-même sur son adresse email, pour ne pas avoir de soucis de clés API (3.0 si possible)

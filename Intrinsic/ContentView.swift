@@ -126,8 +126,22 @@ struct RecChartItem: Identifiable {
 // MARK: - 3. SERVICE (Actor)
 
 actor FinnhubService {
-    private let finnhubApiKey = "d5h5jppr01qjo5tfncbgd5h5jppr01qjo5tfncc0" // Ta clé API
-    private let exchangeRateApiKey = "2d3a18191c2ffd303066358c"
+        
+    private var exchangeRateApiKey: String {
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "EXCHANGERATE_API_KEY") as? String else {
+            print("⚠️ ERREUR CRITIQUE : Clé API ExchangeRate introuvable dans Info.plist")
+            return ""
+        }
+        return key
+    }
+    
+    private var finnhubApiKey: String {
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "FINNHUB_API_KEY") as? String else {
+            print("⚠️ ERREUR CRITIQUE : Clé API Finnhub introuvable dans Info.plist")
+            return ""
+        }
+        return key
+    }
     
     struct StockData: Sendable {
         let price: Double
@@ -142,7 +156,7 @@ actor FinnhubService {
         let fcfCagr: Double?
         let name: String
         let beta: Double?
-        let logoUrl: String? // --- AJOUT : Stockage URL Logo ---
+        let logoUrl: String?
     }
     
     private func fetchAndDecode<T: Codable>(url: URL, type: T.Type, label: String) async throws -> T {
@@ -189,7 +203,7 @@ actor FinnhubService {
         await withTaskGroup(of: PeerData?.self) { group in
             for peer in topPeers {
                 group.addTask {
-                    let metricURL = URL(string: "https://finnhub.io/api/v1/stock/metric?symbol=\(peer)&metric=all&token=\(self.finnhubApiKey)")!
+                    let metricURL = URL(string: "https://finnhub.io/api/v1/stock/metric?symbol=\(peer)&metric=all&token=\(await self.finnhubApiKey)")!
                     if let resp = try? await self.fetchAndDecode(url: metricURL, type: FinnhubMetricResponse.self, label: "PEER_METRIC"),
                        let pe = resp.metric.peTTM {
                         return PeerData(ticker: peer, pe: pe)
@@ -296,7 +310,7 @@ actor FinnhubService {
             fcfCagr: calculatedCagr,
             name: profileResult?.name ?? symbol,
             beta: m.beta,
-            logoUrl: profileResult?.logo // --- AJOUT : Récupération du logo ---
+            logoUrl: profileResult?.logo
         )
     }
 }
@@ -304,7 +318,7 @@ actor FinnhubService {
 // MARK: - 4. MAIN VIEW
 
 struct ContentView: View {
-    @State private var ticker: String = "" // --- MODIF : Ticker vide par défaut ---
+    @State private var ticker: String = ""
     @State private var stockName: String = ""
     @State private var priceDisplay: String = "---"
     @State private var isLoading = false
@@ -312,7 +326,7 @@ struct ContentView: View {
     @State private var yearHigh: Double = 0.0
     @State private var currencySymbol: String = "$"
     @State private var isSidebarVisible: Bool = true
-    @State private var logoUrl: String? // --- AJOUT : État pour le logo ---
+    @State private var logoUrl: String?
     
     @State private var sidebarWidth: CGFloat = 320
     @State private var lastSidebarWidth: CGFloat = 320
@@ -597,7 +611,7 @@ struct ContentView: View {
     
     var guruFocusLink: some View { Link(destination: URL(string: "https://www.gurufocus.com/term/pettm/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))") ?? URL(string: "https://www.gurufocus.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("GuruFocus P/E Data") }.font(.caption).padding(.top, 5) } }
     
-    var financeChartsLink: some View { Link(destination: URL(string: "https://www.financecharts.com/stocks/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))/growth/free-cash-flow") ?? URL(string: "https://stockanalysis.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("FCF Growth last 5 years") }.font(.caption).padding(.top, 5) } }
+    var financeChartsLink: some View { Link(destination: URL(string: "https://www.financecharts.com/stocks/\(ticker.trimmingCharacters(in: .whitespacesAndNewlines))/growth/free-cash-flow") ?? URL(string: "https://stockanalysis.com")!) { HStack(spacing: 4) { Image(systemName: "arrow.up.right.square"); Text("FCF Growth history") }.font(.caption).padding(.top, 5) } }
     
     func parseDouble(_ input: String) -> Double { return Double(input.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0 }
     func calculateIntrinsicValue() {
