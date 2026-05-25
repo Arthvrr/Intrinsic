@@ -1,7 +1,21 @@
 IDÉES 3.0
 - ajouter exportation pdf automatique --> génère un pdf avec graphe tout beau tout propre 3.0
-- feature qui a l'air très dur à mettre en place : obliger l'user à créer un compte, pour qu'il puisse récupérer une clé API à lui-même sur son adresse email, pour ne pas avoir de soucis de clés API (3.0 si possible)
 - ajouter scénarios bull/bear
 - système de cache
 - reverse dcf interactif
 - payback-time (temps de retour sur investissement)
+- earnings suprises finnhub
+- ajout slider rachat/dilution d'actions espéré par an ?
+- simulation monte carlo
+
+
+2. Le graphique "Waterfall" (Bridge EV to Equity)
+La transition entre la valeur des flux de trésorerie et la valeur par action est souvent une "boîte noire" pour les investisseurs débutants.
+Le concept : Visualiser comment la dette et la trésorerie impactent la valeur finale.
+Implémentation SwiftUI : Utilise le framework Charts pour créer un graphique en cascade (Waterfall) qui décompose ta valeur finale :
+Barre 1 : Somme de la valeur présente des FCF (PV of FCF).
+Barre 2 : Valeur Présente Terminale (PV of Terminal Value).
+Barre 3 : Valeur d'Entreprise (Enterprise Value = Barre 1 + Barre 2).
+Barre 4 (Positive) : Trésorerie nette (Cash).
+Barre 5 (Négative) : Dette totale.
+Barre 6 : Valeur des capitaux propres (Equity Value).
