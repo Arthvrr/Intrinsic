@@ -609,11 +609,6 @@ struct ContentView: View {
                             ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
                                 .padding(.top, 40)
                             
-                            if !scenarioResults.isEmpty {
-                                ScenarioComparisonChart(data: scenarioResults, currentPrice: currentPrice, symbol: currencySymbol)
-                                    .padding(.horizontal)
-                            }
-
                             if currentPrice > 0 {
                                 InteractiveReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol, calculateValuation: runSimulationWithGrowth)
                                     .padding(.horizontal)
@@ -622,6 +617,11 @@ struct ContentView: View {
                             if currentPrice > 0 {
                                 ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
                                     .frame(height: 300).padding(.horizontal)
+                            }
+
+                            if !scenarioResults.isEmpty {
+                                ScenarioComparisonChart(data: scenarioResults, currentPrice: currentPrice, symbol: currencySymbol)
+                                    .padding(.horizontal)
                             }
 
                             if !projectionData.isEmpty {
@@ -760,9 +760,7 @@ struct ContentView: View {
                     self.fcfHistory = data.fcfHistory
                     if let cagr = data.fcfCagr { self.fcfCagrDisplay = String(format: "%.1f%%", cagr) } else { self.fcfCagrDisplay = nil }
                     
-                    self.growthRate = data.fcfCagr ?? 10.0
-                    self.exitMultiple = data.peHistoricalAvg > 0 ? data.peHistoricalAvg : 15.0
-                    if let b = data.beta { self.discountRate = 4.2 + (b * 5.0) } else { self.discountRate = 10.0 }
+                    // User-defined assumptions are preserved (no automatic prefill).
                     
                     self.isLoading = false
                 }
@@ -975,7 +973,7 @@ struct ContentView: View {
                 fcfInput: self.fcfInput, cashInput: self.cashInput, debtInput: self.debtInput, sharesInput: self.sharesInput,
                 currentPEInput: self.currentPEInput, fcfCagrDisplay: self.fcfCagrDisplay, betaInput: self.betaInput,
                 fcfHistory: self.fcfHistory, projectionData: self.projectionData, priceTarget: self.priceTarget,
-                earningsData: self.earningsData, parseDouble: self.parseDouble
+                earningsData: self.earningsData, parseDouble: self.parseDouble, scenarioResults: self.scenarioResults, reverseDCFValue: self.marketImpliedGrowth
             )
 
             let renderer = ImageRenderer(content: pdfView)
@@ -1037,6 +1035,7 @@ struct ScenarioComparisonChart: View {
     let data: [ScenarioResult]
     let currentPrice: Double
     let symbol: String
+    @State private var selectedScenario: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -1057,6 +1056,7 @@ struct ScenarioComparisonChart: View {
             }
             .frame(height: 200)
             .chartYAxis { AxisMarks(position: .leading) }
+            .chartOverlay { proxy in GeometryReader { geo in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in if case .active(let loc) = phase { selectedScenario = proxy.value(atX: loc.x) as String? } else { selectedScenario = nil } } } }
         }
         .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
@@ -1600,6 +1600,8 @@ struct PDFExportView: View {
     let fcfCagrDisplay: String?; let betaInput: Double?
     let fcfHistory: [FCFHistoryPoint]; let projectionData: [ProjectionPoint]; let priceTarget: FinnhubPriceTarget?
     let earningsData: [FinnhubEarnings]; let parseDouble: (String) -> Double
+    let scenarioResults: [ScenarioResult]
+    let reverseDCFValue: Double
 
     var updownPct: Double { guard currentPrice > 0, intrinsicValue > 0 else { return 0 }; return ((intrinsicValue - currentPrice) / intrinsicValue) * 100 }
     var targetBuyPrice: Double { intrinsicValue * (1.0 - (marginOfSafety / 100.0)) }
@@ -1627,6 +1629,7 @@ struct PDFExportView: View {
                         pdfKeyValue("FCF/Share", fcfInput); pdfKeyValue("Growth Rate", String(format: "%.1f%%", growthRate)); pdfKeyValue("Discount Rate", String(format: "%.1f%%", discountRate)); pdfKeyValue("Exit Multiple", String(format: "%.1fx", exitMultiple))
                         if let cagr = fcfCagrDisplay { pdfKeyValue("5Y FCF CAGR", cagr) }
                         if let beta = betaInput { pdfKeyValue("Beta", String(format: "%.2f", beta)) }
+                        pdfKeyValue("Reverse DCF Growth", String(format: "%.1f%%", reverseDCFValue))
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Balance Sheet").font(.headline).foregroundColor(.secondary)
@@ -1643,6 +1646,16 @@ struct PDFExportView: View {
                     }.frame(height: 160)
                 }
                 Divider()
+                if !scenarioResults.isEmpty {
+                    Divider()
+                    Text("Scenario Analysis").font(.headline).foregroundColor(.secondary)
+                    ScenarioComparisonChart(data: scenarioResults, currentPrice: currentPrice, symbol: currencySymbol)
+                }
+
+                Divider()
+                Text("Sensitivity Matrix").font(.headline).foregroundColor(.secondary)
+                SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: { _,_ in intrinsicValue })
+
                 Text("⚠️ This analysis is for informational purposes only and does not constitute financial advice. Always do your own due diligence before investing.").font(.caption2).foregroundColor(.secondary).italic()
             }.padding(24)
         }.frame(width: 794).background(Color(nsColor: .windowBackgroundColor))
@@ -1654,3 +1667,4 @@ struct PDFExportView: View {
 
 // UTILS
 extension Font { static let tiny = Font.system(size: 10) }
+
