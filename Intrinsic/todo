@@ -1,12 +1,10 @@
 IDÉES 3.0
-- ajouter exportation pdf automatique --> génère un pdf avec graphe tout beau tout propre 3.0
-- ajouter scénarios bull/bear
-- système de cache
-- reverse dcf interactif
-- payback-time (temps de retour sur investissement)
-- earnings suprises finnhub
-- ajout slider rachat/dilution d'actions espéré par an ?
-- simulation monte carlo
+1 ajouter survols de données TOUT les graphes
+2 finaliser génération de pdf (corriger sensitivity matrix qui affiche une seule valeur dans le pdf, sinon tout est parfait, juste ajouter le nom Intrinsic dans le pdf généré aussi ce serait pas mal !)
+3 reverse dcf chart (X = growth implied et Y = intrinsic value)
+4 ai investment generator, qui donne son avis sur les données qu'il voit
+- système de cache ?
+
 
 
 2. Le graphique "Waterfall" (Bridge EV to Equity)
