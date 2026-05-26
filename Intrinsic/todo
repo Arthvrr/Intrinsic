@@ -1,19 +1,7 @@
-IDÉES 3.0
-1 ajouter survols de données TOUT les graphes
-2 finaliser génération de pdf (corriger sensitivity matrix qui affiche une seule valeur dans le pdf, sinon tout est parfait, juste ajouter le nom Intrinsic dans le pdf généré aussi ce serait pas mal !)
-3 reverse dcf chart (X = growth implied et Y = intrinsic value)
-4 ai investment generator, qui donne son avis sur les données qu'il voit
+3.0.
+-ai investment generator, qui donne son avis sur les données qu'il voit (obliger user à aller créer sa clé API sur Google AI Studio)
+- corriger pdf pour écrire dans le bon sens + ajouter photo logo boite a partir ticker ?
+- autres idées de graphes ? P/FCF actuel récupéré avec Finnhub ? Graphe en donut de la répartition des choses qui prennent de l'importance dans la fair value finale parmi fcf, dettes, etc..
+
+
 - système de cache ?
-
-
-
-2. Le graphique "Waterfall" (Bridge EV to Equity)
-La transition entre la valeur des flux de trésorerie et la valeur par action est souvent une "boîte noire" pour les investisseurs débutants.
-Le concept : Visualiser comment la dette et la trésorerie impactent la valeur finale.
-Implémentation SwiftUI : Utilise le framework Charts pour créer un graphique en cascade (Waterfall) qui décompose ta valeur finale :
-Barre 1 : Somme de la valeur présente des FCF (PV of FCF).
-Barre 2 : Valeur Présente Terminale (PV of Terminal Value).
-Barre 3 : Valeur d'Entreprise (Enterprise Value = Barre 1 + Barre 2).
-Barre 4 (Positive) : Trésorerie nette (Cash).
-Barre 5 (Négative) : Dette totale.
-Barre 6 : Valeur des capitaux propres (Equity Value).

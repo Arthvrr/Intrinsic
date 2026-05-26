@@ -999,21 +999,21 @@ struct ContentView: View {
                 parseDouble: parseDouble, marketImpliedGrowth: snap.marketImpliedGrowth,
                 scenarioResults: snap.scenarioResults, calculateSimulation: simFn
             )
+            // Render to CGImage first (avoids all CGContext flip/coordinate issues)
             let renderer = ImageRenderer(content: pdfView)
             renderer.scale = 2.0
-            renderer.render { size, cgRenderer in
-                var box = CGRect(x: 0, y: 0, width: 794, height: size.height * (794.0 / size.width))
-                guard let pdf = CGContext(url as CFURL, mediaBox: &box, nil) else { return }
-                pdf.beginPDFPage(nil)
-                // Flip coordinates: CGContext origin is bottom-left, SwiftUI is top-left
-                pdf.translateBy(x: 0, y: box.height)
-                pdf.scaleBy(x: 1, y: -1)
-                let scale = box.width / size.width
-                pdf.scaleBy(x: scale, y: scale)
-                cgRenderer(pdf)
-                pdf.endPDFPage()
-                pdf.closePDF()
-            }
+            guard let cgImage = renderer.cgImage else { return }
+
+            let pageWidth: CGFloat = 794
+            let pageHeight: CGFloat = CGFloat(cgImage.height) * pageWidth / CGFloat(cgImage.width)
+            var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+
+            guard let pdf = CGContext(url as CFURL, mediaBox: &mediaBox, nil) else { return }
+            pdf.beginPDFPage(nil)
+            // Draw image straight into the PDF box — CGImage draw is always top-left, no flip needed
+            pdf.draw(cgImage, in: mediaBox)
+            pdf.endPDFPage()
+            pdf.closePDF()
         }
     }
 }
@@ -1931,4 +1931,5 @@ struct InsiderTradesChart: View {
 // MARK: - UTILS
 extension Font { static let tiny = Font.system(size: 10) }
 extension Text { func secondaryStr() -> Text { self.foregroundColor(.secondary) } }
+
 
