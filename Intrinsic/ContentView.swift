@@ -223,6 +223,30 @@ struct MonteCarloResult: Identifiable {
     let frequency: Int
 }
 
+struct RevenuePoint: Identifiable, Sendable, Codable {
+    var id = UUID()
+    let year: String
+    let revenue: Double   // USD millions
+    let netMargin: Double // percentage 0-100
+    private enum CodingKeys: String, CodingKey { case year, revenue, netMargin }
+}
+
+struct FinnhubFinancials: Codable, Sendable {
+    let data: [FinnhubFinancialReport]?
+}
+struct FinnhubFinancialReport: Codable, Sendable {
+    let year: Int?
+    let report: FinnhubReportDetail?
+}
+struct FinnhubReportDetail: Codable, Sendable {
+    let ic: [FinnhubLineItem]?
+}
+struct FinnhubLineItem: Codable, Sendable {
+    let concept: String?
+    let value: Double?
+    let label: String?
+}
+
 // MARK: - 3. SERVICE (Actor)
 
 actor FinnhubService {
@@ -257,6 +281,7 @@ actor FinnhubService {
         let logoUrl: String?
         let fcfHistory: [FCFHistoryPoint]
         let isADR: Bool
+        let revenueHistory: [RevenuePoint]
     }
 
     nonisolated private func fetchAndDecode<T: Codable>(url: URL, type: T.Type, label: String) async throws -> T {
@@ -343,6 +368,29 @@ actor FinnhubService {
         let urlString = "https://finnhub.io/api/v1/stock/price-target?symbol=\(symbol)&token=\(finnhubApiKey)"
         guard let url = URL(string: urlString) else { return nil }
         return try? await fetchAndDecode(url: url, type: FinnhubPriceTarget.self, label: "PRICE_TARGET")
+    }
+
+    func fetchRevenueHistory(symbol: String) async -> [RevenuePoint] {
+        let cacheKey = "revenue_\(symbol)"
+        if let cached = await DataCacheManager.shared.load(forKey: cacheKey, as: [RevenuePoint].self) { return cached }
+        let urlString = "https://finnhub.io/api/v1/stock/financials-reported?symbol=\(symbol)&freq=annual&token=\(finnhubApiKey)"
+        guard let url = URL(string: urlString) else { return [] }
+        do {
+            let resp = try await fetchAndDecode(url: url, type: FinnhubFinancials.self, label: "FINANCIALS")
+            let reports = (resp.data ?? []).sorted { ($0.year ?? 0) < ($1.year ?? 0) }.suffix(5)
+            var points: [RevenuePoint] = []
+            for rep in reports {
+                guard let yr = rep.year, let ic = rep.report?.ic else { continue }
+                let revItem = ic.first { ["Revenues","Revenue","TotalRevenues","us-gaap_Revenues","us-gaap_RevenueFromContractWithCustomerExcludingAssessedTax"].contains($0.concept ?? "") || ($0.label?.lowercased().contains("revenue") ?? false) }
+                let niItem  = ic.first { ["NetIncomeLoss","NetIncome","us-gaap_NetIncomeLoss"].contains($0.concept ?? "") || ($0.label?.lowercased().contains("net income") ?? false) }
+                guard let rev = revItem?.value, rev > 0 else { continue }
+                let ni = niItem?.value ?? 0
+                let margin = rev > 0 ? (ni / rev) * 100 : 0
+                points.append(RevenuePoint(year: "\(yr)", revenue: rev / 1_000_000, netMargin: margin))
+            }
+            await DataCacheManager.shared.save(points, forKey: cacheKey)
+            return points
+        } catch { return [] }
     }
 
     func fetchEarningsSurprises(symbol: String) async -> [FinnhubEarnings] {
@@ -472,7 +520,8 @@ actor FinnhubService {
             beta: m.beta,
             logoUrl: profileResult?.logo,
             fcfHistory: fcfHistoryPoints,
-            isADR: isADR
+            isADR: isADR,
+            revenueHistory: []
         )
         
         await DataCacheManager.shared.save(finalData, forKey: cacheKey)
@@ -528,6 +577,8 @@ struct ContentView: View {
     @State private var earningsData: [FinnhubEarnings] = []
     @State private var fcfHistory: [FCFHistoryPoint] = []
     @State private var insiderTransactions: [FinnhubInsiderTransaction] = []
+    @State private var revenueHistory: [RevenuePoint] = []
+    @State private var pfcfHistory: [FCFHistoryPoint] = [] // reused as price/FCF ratio points
 
     @State private var showHelp: Bool = false
 
@@ -729,6 +780,48 @@ struct ContentView: View {
                                 FCFHistoryChartView(history: fcfHistory, cagrDisplay: fcfCagrDisplay)
                                     .padding(.horizontal)
                             }
+
+                            // NEW: P/FCF History
+                            if pfcfHistory.count >= 2 {
+                                PFCFHistoryChartView(history: pfcfHistory, currentPFCF: parseDouble(currentPEInput) > 0 ? parseDouble(currentPEInput) : nil)
+                                    .padding(.horizontal)
+                            }
+
+                            // NEW: Revenue & Margin Trend
+                            if !revenueHistory.isEmpty {
+                                RevenueMarginChartView(history: revenueHistory)
+                                    .padding(.horizontal)
+                            }
+
+                            // NEW: Fair Value Decomposition Donut
+                            if intrinsicValue > 0 && parseDouble(fcfInput) > 0 {
+                                FairValueDonutView(
+                                    fcfPerShare: parseDouble(fcfInput),
+                                    growthRate: growthRate,
+                                    discountRate: discountRate,
+                                    exitMultiple: exitMultiple,
+                                    cash: parseDouble(cashInput),
+                                    debt: parseDouble(debtInput),
+                                    shares: parseDouble(sharesInput),
+                                    intrinsicValue: intrinsicValue,
+                                    symbol: currencySymbol
+                                ).padding(.horizontal)
+                            }
+
+                            // NEW: Break-Even Chart
+                            if intrinsicValue > 0 && currentPrice > 0 {
+                                BreakEvenChartView(
+                                    currentPrice: currentPrice,
+                                    fcfPerShare: parseDouble(fcfInput),
+                                    discountRate: discountRate,
+                                    exitMultiple: exitMultiple,
+                                    cash: parseDouble(cashInput),
+                                    debt: parseDouble(debtInput),
+                                    shares: parseDouble(sharesInput),
+                                    symbol: currencySymbol,
+                                    computeDCF: runSimulation
+                                ).padding(.horizontal)
+                            }
                             
                             if !insiderTransactions.isEmpty {
                                 InsiderTradesChart(transactions: insiderTransactions)
@@ -813,7 +906,7 @@ struct ContentView: View {
             growthRate = 0.0; discountRate = 0.0; exitMultiple = 0.0; intrinsicValue = 0.0; marketImpliedGrowth = 0.0
             projectionData = []; peersData = []; recommendationData = []; hasCalculated = false
             priceTarget = nil; earningsData = []; fcfHistory = []; insiderTransactions = []; scenarioResults = []
-            monteCarloResults = []
+            monteCarloResults = []; revenueHistory = []; pfcfHistory = []
         }
     }
 
@@ -821,7 +914,7 @@ struct ContentView: View {
         let cleanTicker = ticker.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !cleanTicker.isEmpty else { return }
         isLoading = true; priceDisplay = "Loading..."
-        peersData = []; recommendationData = []; priceTarget = nil; earningsData = []; fcfHistory = []; insiderTransactions = []
+        peersData = []; recommendationData = []; priceTarget = nil; earningsData = []; fcfHistory = []; insiderTransactions = []; revenueHistory = []; pfcfHistory = []
         withAnimation { self.hasCalculated = false; self.intrinsicValue = 0.0; self.projectionData = [] }
         Task {
             if let data = try? await finnhubService.fetchStockData(symbol: cleanTicker) {
@@ -851,14 +944,26 @@ struct ContentView: View {
             async let targetFetch = finnhubService.fetchPriceTarget(symbol: cleanTicker)
             async let earningsFetch = finnhubService.fetchEarningsSurprises(symbol: cleanTicker)
             async let insidersFetch = finnhubService.fetchInsiderTransactions(symbol: cleanTicker)
+            async let revenueFetch = finnhubService.fetchRevenueHistory(symbol: cleanTicker)
 
-            let (peers, recs, target, earnings, insiders) = await (peersFetch, recsFetch, targetFetch, earningsFetch, insidersFetch)
+            let (peers, recs, target, earnings, insiders, revenues) = await (peersFetch, recsFetch, targetFetch, earningsFetch, insidersFetch, revenueFetch)
             await MainActor.run {
                 self.peersData = peers
                 self.recommendationData = recs
                 self.priceTarget = target
                 self.earningsData = earnings
                 self.insiderTransactions = insiders
+                self.revenueHistory = revenues
+                // Build P/FCF history from FCF history points and current PE ratio as proxy
+                if !self.fcfHistory.isEmpty && self.currentPrice > 0 {
+                    self.pfcfHistory = self.fcfHistory.compactMap { pt in
+                        guard pt.value > 0 else { return nil }
+                        let sharesM = (Double(self.sharesInput.replacingOccurrences(of: ",", with: ".")) ?? 0) * 1000
+                        let fcfPerSh = sharesM > 0 ? pt.value / sharesM : 0
+                        guard fcfPerSh > 0 else { return nil }
+                        return FCFHistoryPoint(year: pt.year, value: self.currentPrice / fcfPerSh)
+                    }
+                }
             }
         }
     }
@@ -981,7 +1086,7 @@ struct ContentView: View {
             currentPEInput: currentPEInput, fcfCagrDisplay: fcfCagrDisplay, betaInput: betaInput,
             fcfHistory: fcfHistory, projectionData: projectionData, priceTarget: priceTarget,
             earningsData: earningsData, marketImpliedGrowth: marketImpliedGrowth,
-            scenarioResults: scenarioResults
+            scenarioResults: scenarioResults, logoUrl: logoUrl, monteCarloResults: monteCarloResults
         )
         let simFn = runSimulation
 
@@ -997,7 +1102,8 @@ struct ContentView: View {
                 fcfHistory: snap.fcfHistory, projectionData: snap.projectionData,
                 priceTarget: snap.priceTarget, earningsData: snap.earningsData,
                 parseDouble: parseDouble, marketImpliedGrowth: snap.marketImpliedGrowth,
-                scenarioResults: snap.scenarioResults, calculateSimulation: simFn
+                scenarioResults: snap.scenarioResults, calculateSimulation: simFn,
+                logoUrl: snap.logoUrl, monteCarloResults: snap.monteCarloResults
             )
             // Render to CGImage first (avoids all CGContext flip/coordinate issues)
             let renderer = ImageRenderer(content: pdfView)
@@ -1672,6 +1778,8 @@ struct PDFExportView: View {
     let marketImpliedGrowth: Double
     let scenarioResults: [ScenarioResult]
     let calculateSimulation: (Double, Double) -> Double
+    let logoUrl: String?
+    let monteCarloResults: [MonteCarloResult]
 
     var updownPct: Double { guard currentPrice > 0, intrinsicValue > 0 else { return 0 }; return ((intrinsicValue - currentPrice) / intrinsicValue) * 100 }
     var targetBuyPrice: Double { intrinsicValue * (1.0 - (marginOfSafety / 100.0)) }
@@ -1679,6 +1787,7 @@ struct PDFExportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // HEADER with logo
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Intrinsic").font(.system(size: 14, weight: .bold)).foregroundColor(.white.opacity(0.8))
@@ -1686,7 +1795,23 @@ struct PDFExportView: View {
                     if !stockName.isEmpty { Text(stockName).font(.headline).foregroundColor(.white.opacity(0.8)) }
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 4) { Text("Fair Value Report").font(.caption).foregroundColor(.white.opacity(0.7)); Text(Date().formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundColor(.white.opacity(0.7)) }
+                HStack(spacing: 12) {
+                    // Company logo (fetched via AsyncImage — ImageRenderer captures it if already loaded)
+                    if let logoStr = logoUrl, let url = URL(string: logoStr) {
+                        AsyncImage(url: url) { phase in
+                            if let img = phase.image {
+                                img.resizable().aspectRatio(contentMode: .fit)
+                                    .frame(width: 48, height: 48)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .background(Color.white.opacity(0.15))
+                            }
+                        }.frame(width: 48, height: 48)
+                    }
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Fair Value Report").font(.caption).foregroundColor(.white.opacity(0.7))
+                        Text(Date().formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundColor(.white.opacity(0.7))
+                    }
+                }
             }.padding(24).background(LinearGradient(colors: [Color.blue, Color.blue.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing))
             
             VStack(alignment: .leading, spacing: 20) {
@@ -1745,7 +1870,35 @@ struct PDFExportView: View {
                             Chart {
                                 ForEach(fcfHistory) { pt in BarMark(x: .value("Year", pt.year), y: .value("FCF", pt.value)).foregroundStyle((pt.value >= 0 ? Color.teal : Color.red).gradient).annotation(position: pt.value >= 0 ? .top : .bottom) { Text(String(format: "%.1f", pt.value)).font(.system(size: 8)) } }
                                 RuleMark(y: .value("Zero", 0)).foregroundStyle(Color.gray.opacity(0.5))
-                            }.frame(height: 140)
+                            }.frame(height: 120)
+                        }
+                        // Monte Carlo bottom-right
+                        if !monteCarloResults.isEmpty {
+                            Text("Monte Carlo (1000 simulations)").font(.headline).foregroundColor(.secondary)
+                            let mcMin = monteCarloResults.map(\.bucketMin).min() ?? 0
+                            let mcMax = monteCarloResults.map(\.bucketMax).max() ?? 1
+                            Chart {
+                                ForEach(monteCarloResults) { r in
+                                    let center = (r.bucketMin + r.bucketMax) / 2
+                                    BarMark(x: .value("Value", center), y: .value("Count", r.frequency))
+                                        .foregroundStyle((center >= currentPrice ? Color.green : Color.red).opacity(0.7).gradient)
+                                }
+                                if currentPrice > 0 {
+                                    RuleMark(x: .value("Market", currentPrice))
+                                        .foregroundStyle(.orange)
+                                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                                        .annotation(position: .top) {
+                                            Text("Market").font(.system(size: 7)).foregroundColor(.orange)
+                                        }
+                                }
+                            }
+                            .chartXScale(domain: mcMin...mcMax)
+                            .frame(height: 100)
+                            let aboveCount = monteCarloResults.filter { ($0.bucketMin + $0.bucketMax) / 2 >= currentPrice }.map(\.frequency).reduce(0, +)
+                            let totalCount = monteCarloResults.map(\.frequency).reduce(0, +)
+                            let prob = totalCount > 0 ? Double(aboveCount) / Double(totalCount) * 100 : 0
+                            Text(String(format: "Upside probability: %.0f%% of scenarios > market price", prob))
+                                .font(.system(size: 8)).foregroundColor(prob > 50 ? .green : .red)
                         }
                     }.frame(maxWidth: .infinity)
                 }
@@ -1928,8 +2081,468 @@ struct InsiderTradesChart: View {
     }
 }
 
+// MARK: - NEW CHARTS
+
+// 1. P/FCF History Chart
+struct PFCFHistoryChartView: View {
+    let history: [FCFHistoryPoint]
+    let currentPFCF: Double?
+    @State private var hoveredYear: String? = nil
+
+    var yMin: Double { max(0, (history.map(\.value).min() ?? 0) * 0.8) }
+    var yMax: Double { (history.map(\.value).max() ?? 50) * 1.2 }
+    var avgPFCF: Double {
+        let vals = history.map(\.value).filter { $0 > 0 }
+        return vals.isEmpty ? 0 : vals.reduce(0, +) / Double(vals.count)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.line.flattrend.xyaxis").font(.title2).foregroundColor(.purple)
+                Text("Price / FCF Ratio History").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                if avgPFCF > 0 {
+                    HStack(spacing: 4) {
+                        Text("5Y Avg:").font(.caption).foregroundColor(.secondary)
+                        Text(String(format: "%.1fx", avgPFCF)).font(.caption).bold().foregroundColor(.purple)
+                    }.padding(.horizontal, 8).padding(.vertical, 4).background(Color.purple.opacity(0.1)).cornerRadius(6)
+                }
+            }
+
+            Chart {
+                ForEach(history) { pt in
+                    BarMark(x: .value("Year", pt.year), y: .value("P/FCF", pt.value))
+                        .foregroundStyle(Color.purple.opacity(0.7).gradient)
+                        .annotation(position: .top) {
+                            Text(String(format: "%.1fx", pt.value)).font(.system(size: 9)).bold().foregroundColor(.purple)
+                        }
+                    if let hov = hoveredYear, hov == pt.year {
+                        RuleMark(x: .value("Year", pt.year))
+                            .foregroundStyle(Color.gray.opacity(0.3))
+                            .annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(pt.year).font(.caption).bold()
+                                    Text(String(format: "P/FCF: %.1fx", pt.value)).font(.caption2).foregroundColor(.purple)
+                                    if avgPFCF > 0 {
+                                        let delta = ((pt.value - avgPFCF) / avgPFCF) * 100
+                                        Text(String(format: "vs avg: %@%.1f%%", delta >= 0 ? "+" : "", delta))
+                                            .font(.caption2).foregroundColor(delta <= 0 ? .green : .red)
+                                    }
+                                    Text(pt.value < 20 ? "Historically cheap ✓" : pt.value < 35 ? "Fair range" : "Historically expensive ⚠️")
+                                        .font(.caption2).foregroundColor(pt.value < 20 ? .green : pt.value < 35 ? .orange : .red)
+                                }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4)
+                            }.zIndex(10)
+                    }
+                }
+                // Average line
+                if avgPFCF > 0 {
+                    RuleMark(y: .value("5Y Average", avgPFCF))
+                        .foregroundStyle(.purple.opacity(0.5))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text(String(format: "Avg %.1fx", avgPFCF)).font(.caption2).foregroundColor(.purple)
+                        }
+                }
+                // Current P/FCF
+                if let cur = currentPFCF, cur > 0 {
+                    RuleMark(y: .value("Current", cur))
+                        .foregroundStyle(.orange)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 3]))
+                        .annotation(position: .bottom, alignment: .trailing) {
+                            Text(String(format: "Now %.1fx", cur)).font(.caption2).foregroundColor(.orange)
+                        }
+                }
+            }
+            .chartYScale(domain: yMin...yMax)
+            .frame(height: 200)
+            .chartOverlay { proxy in
+                GeometryReader { _ in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let l): if let x: String = proxy.value(atX: l.x) { hoveredYear = x }
+                            case .ended: hoveredYear = nil
+                            }
+                        }
+                }
+            }
+            Text("Low P/FCF historically signals better entry points. Hover bars to compare vs 5Y average.")
+                .font(.caption2).foregroundColor(.secondary).italic()
+        }
+        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.purple.opacity(0.2), lineWidth: 1))
+    }
+}
+
+// 2. Revenue & Net Margin Trend
+struct RevenueMarginChartView: View {
+    let history: [RevenuePoint]
+    @State private var hoveredYear: String? = nil
+
+    var maxRevenue: Double { history.map(\.revenue).max() ?? 1 }
+    var marginDomain: ClosedRange<Double> {
+        let margins = history.map(\.netMargin)
+        let lo = min(0, (margins.min() ?? 0) - 5)
+        let hi = (margins.max() ?? 30) + 5
+        return lo...hi
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.bar.fill").font(.title2).foregroundColor(.cyan)
+                Text("Revenue & Net Margin Trend").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                HStack(spacing: 12) {
+                    legendDot(.cyan, "Revenue ($M)")
+                    legendLine(.orange, "Net Margin %")
+                }
+            }
+
+            Chart {
+                ForEach(history) { pt in
+                    BarMark(x: .value("Year", pt.year), y: .value("Revenue ($M)", pt.revenue))
+                        .foregroundStyle(Color.cyan.opacity(0.6).gradient)
+                    LineMark(x: .value("Year", pt.year), y: .value("Net Margin %", pt.netMargin), series: .value("Series", "Margin"))
+                        .foregroundStyle(.orange)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        .symbol(Circle().strokeBorder(lineWidth: 2))
+                        .symbolSize(40)
+                        .interpolationMethod(.monotone)
+                    if let hov = hoveredYear, hov == pt.year {
+                        RuleMark(x: .value("Year", pt.year))
+                            .foregroundStyle(Color.gray.opacity(0.25))
+                            .annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(pt.year).font(.caption).bold()
+                                    Text(String(format: "Revenue: $%.0fM", pt.revenue)).font(.caption2).foregroundColor(.cyan)
+                                    Text(String(format: "Net Margin: %.1f%%", pt.netMargin))
+                                        .font(.caption2).foregroundColor(pt.netMargin >= 0 ? .orange : .red)
+                                    Text(pt.netMargin > 20 ? "High-quality margins ✓" : pt.netMargin > 5 ? "Decent profitability" : "Thin / negative margins ⚠️")
+                                        .font(.caption2).foregroundColor(pt.netMargin > 20 ? .green : pt.netMargin > 5 ? .orange : .red)
+                                }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4)
+                            }.zIndex(10)
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading) { val in
+                    if let d = val.as(Double.self) {
+                        AxisValueLabel { Text(d >= 1000 ? String(format: "%.0fB", d/1000) : String(format: "%.0fM", d)).font(.caption2) }
+                        AxisGridLine()
+                    }
+                }
+            }
+            .chartForegroundStyleScale(["Revenue ($M)": Color.cyan.opacity(0.6), "Net Margin %": Color.orange])
+            .frame(height: 220)
+            .chartOverlay { proxy in
+                GeometryReader { _ in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let l): if let x: String = proxy.value(atX: l.x) { hoveredYear = x }
+                            case .ended: hoveredYear = nil
+                            }
+                        }
+                }
+            }
+        }
+        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.cyan.opacity(0.2), lineWidth: 1))
+    }
+
+    func legendDot(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 4) { Circle().fill(color).frame(width: 8, height: 8); Text(label).font(.caption2).foregroundColor(.secondary) }
+    }
+    func legendLine(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 4) { Rectangle().fill(color).frame(width: 14, height: 2).cornerRadius(1); Text(label).font(.caption2).foregroundColor(.secondary) }
+    }
+}
+
+// 3. Fair Value Decomposition Donut
+struct FairValueDonutView: View {
+    let fcfPerShare: Double
+    let growthRate: Double
+    let discountRate: Double
+    let exitMultiple: Double
+    let cash: Double
+    let debt: Double
+    let shares: Double
+    let intrinsicValue: Double
+    let symbol: String
+
+    struct Slice: Identifiable {
+        let id = UUID()
+        let label: String
+        let value: Double
+        let color: Color
+    }
+
+    var pvFCF: Double {
+        guard discountRate > 0 else { return 0 }
+        let r = discountRate / 100
+        let g = growthRate / 100
+        var fcf = fcfPerShare
+        var sum = 0.0
+        for i in 1...5 { fcf *= (1 + g); sum += fcf / pow(1 + r, Double(i)) }
+        return max(0, sum)
+    }
+
+    var pvTerminal: Double {
+        guard discountRate > 0 else { return 0 }
+        let r = discountRate / 100
+        let g = growthRate / 100
+        var fcf = fcfPerShare
+        for _ in 1...5 { fcf *= (1 + g) }
+        let tv = fcf * exitMultiple
+        return max(0, tv / pow(1 + r, 5))
+    }
+
+    var netCashPerShare: Double {
+        shares > 0 ? (cash - debt) / shares : 0
+    }
+
+    var slices: [Slice] {
+        var s: [Slice] = []
+        if pvFCF > 0       { s.append(Slice(label: "PV FCF (Y1-5)", value: pvFCF, color: .blue)) }
+        if pvTerminal > 0  { s.append(Slice(label: "Terminal Value", value: pvTerminal, color: .indigo)) }
+        if netCashPerShare > 0 { s.append(Slice(label: "Net Cash/Share", value: netCashPerShare, color: .teal)) }
+        else if netCashPerShare < 0 { s.append(Slice(label: "Net Debt/Share", value: abs(netCashPerShare), color: .red)) }
+        return s
+    }
+
+    var total: Double { slices.map(\.value).reduce(0, +) }
+    @State private var hoveredId: UUID? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.pie.fill").font(.title2).foregroundColor(.indigo)
+                Text("Fair Value Decomposition").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                Text(String(format: "Total: %.2f %@", intrinsicValue, symbol)).font(.caption).bold().foregroundColor(.indigo)
+            }
+
+            HStack(spacing: 24) {
+                // Donut rendered with Swift Charts
+                Chart(slices) { slice in
+                    SectorMark(
+                        angle: .value("Value", slice.value),
+                        innerRadius: .ratio(0.55),
+                        angularInset: 2
+                    )
+                    .foregroundStyle(slice.color.gradient)
+                    .opacity(hoveredId == nil || hoveredId == slice.id ? 1 : 0.45)
+                }
+                .chartAngleSelection(value: .constant(nil as Double?))
+                .frame(width: 160, height: 160)
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        Rectangle().fill(.clear).contentShape(Rectangle())
+                            .onContinuousHover { phase in
+                                switch phase {
+                                case .active(let loc):
+                                    let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+                                    let dx = loc.x - center.x; let dy = loc.y - center.y
+                                    let dist = sqrt(dx*dx + dy*dy)
+                                    let innerR = 160 * 0.55 / 2; let outerR = 80.0
+                                    guard dist > innerR && dist < outerR else { hoveredId = nil; return }
+                                    var angle = atan2(dy, dx) * 180 / .pi + 90
+                                    if angle < 0 { angle += 360 }
+                                    var cumAngle = 0.0
+                                    for s in slices {
+                                        let sliceAngle = (s.value / total) * 360
+                                        if angle < cumAngle + sliceAngle { hoveredId = s.id; return }
+                                        cumAngle += sliceAngle
+                                    }
+                                    hoveredId = nil
+                                case .ended: hoveredId = nil
+                                }
+                            }
+                    }
+                }
+
+                // Legend + percentages
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(slices) { slice in
+                        let pct = total > 0 ? (slice.value / total) * 100 : 0
+                        HStack(spacing: 8) {
+                            Circle().fill(slice.color).frame(width: 10, height: 10)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(slice.label).font(.caption).bold()
+                                HStack(spacing: 6) {
+                                    Text(String(format: "%.2f %@", slice.value, symbol)).font(.caption2).foregroundColor(.secondary)
+                                    Text(String(format: "%.0f%%", pct)).font(.caption2).bold().foregroundColor(slice.color)
+                                }
+                            }
+                        }
+                        .opacity(hoveredId == nil || hoveredId == slice.id ? 1 : 0.4)
+                    }
+                    Divider()
+                    if netCashPerShare < 0 {
+                        Text("⚠️ Net debt reduces intrinsic value").font(.caption2).foregroundColor(.red).italic()
+                    } else {
+                        Text("ℹ︎ Terminal value dominates — high sensitivity to exit multiple").font(.caption2).foregroundColor(.secondary).italic()
+                    }
+                }
+                Spacer()
+            }
+        }
+        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.indigo.opacity(0.2), lineWidth: 1))
+    }
+}
+
+// 4. Break-Even Chart — at what purchase price is DCF exactly break-even for each growth rate?
+struct BreakEvenChartView: View {
+    let currentPrice: Double
+    let fcfPerShare: Double
+    let discountRate: Double
+    let exitMultiple: Double
+    let cash: Double
+    let debt: Double
+    let shares: Double
+    let symbol: String
+    let computeDCF: (Double, Double) -> Double
+
+    struct BEPoint: Identifiable { let id = UUID(); let growth: Double; let breakEvenPrice: Double }
+
+    var points: [BEPoint] {
+        stride(from: 0.0, through: 30.0, by: 1.0).map { g in
+            BEPoint(growth: g, breakEvenPrice: computeDCF(g, discountRate))
+        }
+    }
+
+    @State private var hoveredGrowth: Double? = nil
+    var hoveredPt: BEPoint? {
+        guard let h = hoveredGrowth else { return nil }
+        return points.min(by: { abs($0.growth - h) < abs($1.growth - h) })
+    }
+
+    var allValues: [Double] { points.map(\.breakEvenPrice) + [currentPrice] }
+    var yMin: Double { max(0, (allValues.min() ?? 0) * 0.85) }
+    var yMax: Double { (allValues.max() ?? 100) * 1.15 }
+
+    // Find break-even growth for current price
+    var breakEvenGrowth: Double? {
+        for i in 0..<(points.count - 1) {
+            if (points[i].breakEvenPrice - currentPrice) * (points[i+1].breakEvenPrice - currentPrice) < 0 {
+                return (points[i].growth + points[i+1].growth) / 2
+            }
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "arrow.left.arrow.right.circle.fill").font(.title2).foregroundColor(.green)
+                Text("Break-Even Analysis").font(.headline).foregroundColor(.secondary)
+                Spacer()
+                if let beg = breakEvenGrowth {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Break-even growth").font(.caption2).foregroundColor(.secondary)
+                        Text(String(format: "%.1f%% / yr", beg)).font(.title3).bold().foregroundColor(.green)
+                    }
+                }
+            }
+
+            Text("The green zone shows growth rates where DCF fair value exceeds the current market price — your margin of safety range.")
+                .font(.caption).foregroundColor(.secondary)
+
+            Chart {
+                // Colored area zones
+                ForEach(points) { pt in
+                    AreaMark(x: .value("Growth", pt.growth), y: .value("Break-even Price", pt.breakEvenPrice))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: pt.breakEvenPrice >= currentPrice
+                                    ? [Color.green.opacity(0.2), Color.green.opacity(0.05)]
+                                    : [Color.red.opacity(0.15), Color.red.opacity(0.03)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.monotone)
+                    LineMark(x: .value("Growth", pt.growth), y: .value("Break-even Price", pt.breakEvenPrice))
+                        .foregroundStyle(
+                            LinearGradient(
+                                stops: [.init(color: .red, location: 0), .init(color: .green, location: 1)],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                        )
+                        .lineStyle(StrokeStyle(lineWidth: 2.5))
+                        .interpolationMethod(.monotone)
+                }
+                // Current price horizontal rule
+                RuleMark(y: .value("Current Price", currentPrice))
+                    .foregroundStyle(.orange)
+                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text(String(format: "Market: %.0f %@", currentPrice, symbol)).font(.caption2).foregroundColor(.orange)
+                    }
+                // Break-even vertical marker
+                if let beg = breakEvenGrowth {
+                    RuleMark(x: .value("Break-even", beg))
+                        .foregroundStyle(.green.opacity(0.6))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                        .annotation(position: .bottom) {
+                            Text(String(format: "%.1f%%", beg)).font(.caption2).bold().foregroundColor(.green)
+                        }
+                }
+                // Hover crosshair
+                if let pt = hoveredPt {
+                    PointMark(x: .value("Growth", pt.growth), y: .value("Price", pt.breakEvenPrice))
+                        .foregroundStyle(pt.breakEvenPrice >= currentPrice ? Color.green : Color.red)
+                        .symbolSize(80)
+                    RuleMark(x: .value("Hover", pt.growth))
+                        .foregroundStyle(Color.gray.opacity(0.25))
+                        .annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(String(format: "Growth: %.0f%%", pt.growth)).font(.caption).bold()
+                                Text(String(format: "Fair Value: %.2f %@", pt.breakEvenPrice, symbol)).font(.caption2)
+                                    .foregroundColor(pt.breakEvenPrice >= currentPrice ? .green : .red)
+                                if currentPrice > 0 {
+                                    let mos = ((pt.breakEvenPrice - currentPrice) / pt.breakEvenPrice) * 100
+                                    Text(String(format: "Margin of Safety: %.1f%%", mos))
+                                        .font(.caption2).bold()
+                                        .foregroundColor(mos > 0 ? .green : .red)
+                                }
+                            }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4)
+                        }.zIndex(10)
+                }
+            }
+            .chartYScale(domain: yMin...yMax)
+            .chartXAxisLabel("FCF Growth Rate (%)", alignment: .center)
+            .chartYAxisLabel("DCF Fair Value (\(symbol))", alignment: .center)
+            .frame(height: 220)
+            .chartOverlay { proxy in
+                GeometryReader { _ in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let l): if let x: Double = proxy.value(atX: l.x) { hoveredGrowth = x }
+                            case .ended: hoveredGrowth = nil
+                            }
+                        }
+                }
+            }
+
+            HStack(spacing: 16) {
+                HStack(spacing: 4) { Rectangle().fill(LinearGradient(colors: [.red, .green], startPoint: .leading, endPoint: .trailing)).frame(width: 20, height: 3).cornerRadius(1); Text("DCF curve").font(.caption2).foregroundColor(.secondary) }
+                HStack(spacing: 4) { Rectangle().fill(Color.orange).frame(width: 16, height: 2).cornerRadius(1); Text("Market price").font(.caption2).foregroundColor(.secondary) }
+                HStack(spacing: 4) { Circle().fill(Color.green).frame(width: 7, height: 7); Text("Undervalued zone").font(.caption2).foregroundColor(.secondary) }
+                HStack(spacing: 4) { Circle().fill(Color.red).frame(width: 7, height: 7); Text("Overvalued zone").font(.caption2).foregroundColor(.secondary) }
+            }
+        }
+        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.green.opacity(0.2), lineWidth: 1))
+    }
+}
+
 // MARK: - UTILS
 extension Font { static let tiny = Font.system(size: 10) }
 extension Text { func secondaryStr() -> Text { self.foregroundColor(.secondary) } }
+
 
 

@@ -1,7 +1,4 @@
 3.0.
 -ai investment generator, qui donne son avis sur les données qu'il voit (obliger user à aller créer sa clé API sur Google AI Studio)
-- corriger pdf pour écrire dans le bon sens + ajouter photo logo boite a partir ticker ?
-- autres idées de graphes ? P/FCF actuel récupéré avec Finnhub ? Graphe en donut de la répartition des choses qui prennent de l'importance dans la fair value finale parmi fcf, dettes, etc..
-
-
+- score de qualité d'une valorisation sur 100 
 - système de cache ?
