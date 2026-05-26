@@ -737,7 +737,7 @@ struct ContentView: View {
 
                             if currentPrice > 0 {
                                 ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
-                                    .frame(height: 250).padding(.horizontal)
+                                    .frame(maxWidth: .infinity, minHeight: 375).padding(.horizontal)
                             }
                             
                             // NOUVEAU: Scénario en dessous de Market vs Value
@@ -808,18 +808,12 @@ struct ContentView: View {
                                 ).padding(.horizontal)
                             }
 
-                            // NEW: Break-Even Chart
-                            if intrinsicValue > 0 && currentPrice > 0 {
-                                BreakEvenChartView(
+                            // NEW: Margin of Safety Entry Range
+                            if intrinsicValue > 0 {
+                                MoSEntryRangeView(
+                                    intrinsicValue: intrinsicValue,
                                     currentPrice: currentPrice,
-                                    fcfPerShare: parseDouble(fcfInput),
-                                    discountRate: discountRate,
-                                    exitMultiple: exitMultiple,
-                                    cash: parseDouble(cashInput),
-                                    debt: parseDouble(debtInput),
-                                    shares: parseDouble(sharesInput),
-                                    symbol: currencySymbol,
-                                    computeDCF: runSimulation
+                                    symbol: currencySymbol
                                 ).padding(.horizontal)
                             }
                             
@@ -1184,8 +1178,8 @@ struct ScenarioComparisonChart: View {
                         }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4)
                     }.zIndex(10)
                 }
-            }.frame(height: 200).chartYAxis { AxisMarks(position: .leading) }.chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedScenario = x }; case .ended: selectedScenario = nil } } } }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            }.frame(height: 300).chartYAxis { AxisMarks(position: .leading) }.chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedScenario = x }; case .ended: selectedScenario = nil } } } }
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1204,7 +1198,7 @@ struct InteractiveReverseDCFView: View {
             }
             Divider()
             VStack(spacing: 5) { HStack { Text("Test Market Growth: \(String(format: "%.1f%%", sliderGrowth))").font(.caption).bold(); Spacer(); Text("Simulated Value: \(String(format: "%.2f", dynamicValue)) \(symbol)").font(.headline).foregroundColor(dynamicValue > currentPrice ? .green : .red) }; Slider(value: $sliderGrowth, in: -5...35, step: 0.5) }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(isRisky ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1))
     }
 }
 
@@ -1348,7 +1342,7 @@ struct ReverseDCFChartView: View {
             .chartYScale(domain: yMin...yMax)
             .chartXAxisLabel("Implied FCF Growth Rate (%)", alignment: .center)
             .chartYAxisLabel("Intrinsic Value (\(symbol))", alignment: .center)
-            .frame(height: 240)
+            .frame(height: 360)
             .chartOverlay { proxy in
                 GeometryReader { _ in
                     Rectangle().fill(.clear).contentShape(Rectangle())
@@ -1404,8 +1398,8 @@ struct MonteCarloChart: View {
                 if let val = hoveredVal, let item = results.first(where: { val >= $0.bucketMin && val <= $0.bucketMax }) {
                     RuleMark(x: .value("Value", (item.bucketMin + item.bucketMax) / 2)).foregroundStyle(Color.gray.opacity(0.3)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 3) { Text("Between \(Int(item.bucketMin)) and \(Int(item.bucketMax)) \(symbol)").font(.caption).bold(); Text("Probability: \(String(format: "%.1f", Double(item.frequency)/10.0))%").font(.caption2).foregroundColor(.purple) }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10)
                 }
-            }.chartXAxisLabel("Intrinsic Value (\(symbol))").chartYAxisLabel("Frequency").frame(height: 200).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: Double = proxy.value(atX: l.x) { hoveredVal = x }; case .ended: hoveredVal = nil } } } }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            }.chartXAxisLabel("Intrinsic Value (\(symbol))").chartYAxisLabel("Frequency").frame(height: 300).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: Double = proxy.value(atX: l.x) { hoveredVal = x }; case .ended: hoveredVal = nil } } } }
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1419,8 +1413,8 @@ struct ProjectedGrowthChart: View {
                 RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 5])).annotation(position: .top, alignment: .leading) { Text("Price: \(Int(currentPrice))\(symbol)").font(.caption2).foregroundColor(.red) }
                 ForEach(data) { point in LineMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).interpolationMethod(.monotone); PointMark(x: .value("Year", point.year), y: .value("Value", point.value)).foregroundStyle(.blue).symbolSize(60) }
                 if let selectedYear, let point = data.first(where: { $0.year == selectedYear }) { RuleMark(x: .value("Year", selectedYear)).foregroundStyle(Color.gray.opacity(0.3)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 4) { Text("Year \(point.year)").font(.caption).bold().foregroundColor(.primary); Text("Value: \(Int(point.value)) \(symbol)").font(.caption).bold().foregroundColor(.blue) }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10) }
-            }.chartYScale(domain: yDomain).chartXScale(domain: 0...5).frame(height: 250).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: Int = proxy.value(atX: l.x) { selectedYear = x }; case .ended: selectedYear = nil } } } }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            }.chartYScale(domain: yDomain).chartXScale(domain: 0...5).frame(height: 375).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: Int = proxy.value(atX: l.x) { selectedYear = x }; case .ended: selectedYear = nil } } } }
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1490,7 +1484,7 @@ struct PaybackTimeView: View {
                             .zIndex(10)
                     }
                 }
-                .chartYScale(domain: 0...yMax).frame(height: 160)
+                .chartYScale(domain: 0...yMax).frame(height: 360)
                 .chartOverlay { proxy in
                     GeometryReader { _ in
                         Rectangle().fill(.clear).contentShape(Rectangle())
@@ -1503,7 +1497,7 @@ struct PaybackTimeView: View {
                     }
                 }
             }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1545,7 +1539,7 @@ struct SensitivityMatrixView: View {
                     }
                 }
             }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
     }
 }
 
@@ -1577,9 +1571,9 @@ struct FCFHistoryChartView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack { Image(systemName: "dollarsign.arrow.circlepath").font(.title2).foregroundColor(.teal); Text("Free Cash Flow History (5Y)").font(.headline).foregroundColor(.secondary); Spacer(); if let cagr = cagrDisplay { HStack(spacing: 4) { Image(systemName: "wand.and.stars").font(.caption).foregroundColor(.blue); Text("5Y CAGR: \(cagr)").font(.caption).bold().foregroundColor(.blue) }.padding(.horizontal, 8).padding(.vertical, 4).background(Color.blue.opacity(0.1)).cornerRadius(6) } }
             Chart { ForEach(history) { point in BarMark(x: .value("Year", point.year), y: .value("FCF", point.value)).foregroundStyle(barColor(point.value).gradient).annotation(position: point.value >= 0 ? .top : .bottom) { Text(formatFCF(point.value)).font(.caption2).bold().foregroundColor(barColor(point.value)) }; if let sel = selectedYear, sel == point.year { RuleMark(x: .value("Year", point.year)).foregroundStyle(Color.gray.opacity(0.3)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 4) { Text(point.year).font(.caption).bold(); Text("FCF: \(formatFCF(point.value))").font(.caption2).foregroundColor(barColor(point.value)); Text(point.value >= 0 ? "Positive cash generation ✓" : "Negative FCF — watch carefully ⚠️").font(.caption2).foregroundColor(point.value >= 0 ? .green : .red) }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10) } }; if history.contains(where: { $0.value < 0 }) || history.contains(where: { $0.value >= 0 }) { RuleMark(y: .value("Zero", 0)).foregroundStyle(Color.gray.opacity(0.5)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3])) } }
-            .chartYScale(domain: yMin...yMax).frame(height: 220).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedYear = x }; case .ended: selectedYear = nil } } } }
+            .chartYScale(domain: yMin...yMax).frame(height: 330).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedYear = x }; case .ended: selectedYear = nil } } } }
             if history.count >= 2 { let first = history.first!.value; let last = history.last!.value; let trend = last > first; HStack(spacing: 6) { Image(systemName: trend ? "arrow.up.right.circle.fill" : "arrow.down.right.circle.fill").foregroundColor(trend ? .green : .red); Text(trend ? "FCF trending upward over the period" : "FCF declining over the period — investigate why").font(.caption).foregroundColor(trend ? .green : .red) } }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.teal.opacity(0.2), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.teal.opacity(0.2), lineWidth: 1))
     }
 }
 
@@ -1593,8 +1587,8 @@ struct AnalystConsensusChart: View {
             Chart {
                 ForEach(chartData) { item in BarMark(x: .value("Period", item.period), y: .value("Count", item.value)).foregroundStyle(item.color) }
                 if let selectedPeriod, let rec = getDataForPeriod(selectedPeriod) { RuleMark(x: .value("Period", selectedPeriod)).foregroundStyle(Color.gray.opacity(0.3)).lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5])).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 6) { Text("Period: \(selectedPeriod)").font(.caption).bold().foregroundColor(.primary); Divider(); tooltipRow(label: "Strong Buy", value: rec.strongBuy, color: .green); tooltipRow(label: "Buy", value: rec.buy, color: .mint); tooltipRow(label: "Hold", value: rec.hold, color: .yellow); tooltipRow(label: "Sell", value: rec.sell, color: .orange); tooltipRow(label: "Strong Sell", value: rec.strongSell, color: .red) }.padding(12).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(10).shadow(radius: 5) }.zIndex(10) }
-            }.chartForegroundStyleScale(["Strong Buy": .green, "Buy": .mint, "Hold": .yellow, "Sell": .orange, "Strong Sell": .red]).frame(height: 250).padding(.top, 50).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedPeriod = x }; case .ended: selectedPeriod = nil } } } }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            }.chartForegroundStyleScale(["Strong Buy": .green, "Buy": .mint, "Hold": .yellow, "Sell": .orange, "Strong Sell": .red]).frame(height: 375).padding(.top, 50).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedPeriod = x }; case .ended: selectedPeriod = nil } } } }
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
     func tooltipRow(label: String, value: Int, color: Color) -> some View { HStack { Circle().fill(color).frame(width: 8, height: 8); Text(label).font(.caption2).foregroundColor(.secondary); Spacer(); Text("\(value)").font(.caption2).bold().foregroundColor(.primary) } }
 }
@@ -1609,9 +1603,9 @@ struct PriceTargetView: View {
             HStack { Image(systemName: "scope").font(.title2).foregroundColor(.purple); Text("Analyst Price Targets").font(.headline).foregroundColor(.secondary); Spacer(); if let upside = meanUpsidePct { HStack(spacing: 4) { Image(systemName: upside >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill").foregroundColor(upside >= 0 ? .green : .red); Text(String(format: "Mean: %@%.1f%%", upside >= 0 ? "+" : "", upside)).font(.caption).bold().foregroundColor(upside >= 0 ? .green : .red) }.padding(.horizontal, 8).padding(.vertical, 4).background((upside >= 0 ? Color.green : Color.red).opacity(0.1)).cornerRadius(6) } }
             HStack(spacing: 10) { if let low = priceTarget.targetLow, low > 0 { statPill(label: "Low", value: low, color: .orange) }; if let median = priceTarget.targetMedian, median > 0 { statPill(label: "Median", value: median, color: .teal) }; if let mean = priceTarget.targetMean, mean > 0 { statPill(label: "Mean", value: mean, color: .purple) }; if let high = priceTarget.targetHigh, high > 0 { statPill(label: "High", value: high, color: .green) } }
             if let low = priceTarget.targetLow, let high = priceTarget.targetHigh, let mean = priceTarget.targetMean, low > 0, high > 0, currentPrice > 0 { let allVals = [low, high, currentPrice, mean]; let rangeMin = allVals.min()! * 0.9; let rangeMax = allVals.max()! * 1.1; let total = rangeMax - rangeMin; VStack(alignment: .leading, spacing: 6) { Text("Price Range Visualizer").font(.caption).bold().foregroundColor(.secondary); GeometryReader { geo in ZStack(alignment: .leading) { RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.15)).frame(height: 24); let lowX = CGFloat((low - rangeMin) / total) * geo.size.width; let highX = CGFloat((high - rangeMin) / total) * geo.size.width; RoundedRectangle(cornerRadius: 6).fill(Color.teal.opacity(0.2)).frame(width: highX - lowX, height: 24).offset(x: lowX); let meanX = CGFloat((mean - rangeMin) / total) * geo.size.width; Capsule().fill(Color.purple).frame(width: 4, height: 30).offset(x: meanX - 2); let curX = CGFloat((currentPrice - rangeMin) / total) * geo.size.width; Capsule().fill(Color.orange).frame(width: 3, height: 30).offset(x: curX - 1.5); if intrinsicValue > 0 { let dcfClamped = min(max(intrinsicValue, rangeMin), rangeMax); let dcfX = CGFloat((dcfClamped - rangeMin) / total) * geo.size.width; Capsule().fill(Color.blue).frame(width: 3, height: 30).offset(x: dcfX - 1.5) } } }.frame(height: 30); HStack(spacing: 12) { legendDot(color: .teal, label: "Analyst range"); legendDot(color: .purple, label: "Mean target"); legendDot(color: .orange, label: "Current price"); if intrinsicValue > 0 { legendDot(color: .blue, label: "DCF value") } } } }
-            Chart { ForEach(bars) { bar in BarMark(x: .value("Label", bar.label), y: .value("Price", bar.value)).foregroundStyle(bar.color.gradient).annotation(position: .top) { Text(String(format: "%.0f", bar.value)).font(.caption2).bold().foregroundColor(bar.color) }; if let sel = selectedLabel, sel == bar.label { RuleMark(x: .value("Label", sel)).foregroundStyle(Color.gray.opacity(0.2)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 3) { Text(bar.label).bold().font(.caption); Text(String(format: "%.2f %@", bar.value, symbol)).font(.caption2).foregroundColor(bar.color); if bar.label != "Current" && currentPrice > 0 { let d = ((bar.value - currentPrice) / currentPrice) * 100; Text(String(format: "vs current: %@%.1f%%", d >= 0 ? "+" : "", d)).font(.caption2).foregroundColor(d >= 0 ? .green : .red) } }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10) } } }.frame(height: 220).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedLabel = x }; case .ended: selectedLabel = nil } } } }
+            Chart { ForEach(bars) { bar in BarMark(x: .value("Label", bar.label), y: .value("Price", bar.value)).foregroundStyle(bar.color.gradient).annotation(position: .top) { Text(String(format: "%.0f", bar.value)).font(.caption2).bold().foregroundColor(bar.color) }; if let sel = selectedLabel, sel == bar.label { RuleMark(x: .value("Label", sel)).foregroundStyle(Color.gray.opacity(0.2)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 3) { Text(bar.label).bold().font(.caption); Text(String(format: "%.2f %@", bar.value, symbol)).font(.caption2).foregroundColor(bar.color); if bar.label != "Current" && currentPrice > 0 { let d = ((bar.value - currentPrice) / currentPrice) * 100; Text(String(format: "vs current: %@%.1f%%", d >= 0 ? "+" : "", d)).font(.caption2).foregroundColor(d >= 0 ? .green : .red) } }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10) } } }.frame(height: 330).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedLabel = x }; case .ended: selectedLabel = nil } } } }
             if let updated = priceTarget.lastUpdated { Text("Last updated: \(updated)").font(.caption2).foregroundColor(.secondary) }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.purple.opacity(0.2), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.purple.opacity(0.2), lineWidth: 1))
     }
     func statPill(label: String, value: Double, color: Color) -> some View { VStack(spacing: 2) { Text(label).font(.caption2).foregroundColor(.secondary); Text(String(format: "%.2f", value)).font(.caption).bold().foregroundColor(color) }.padding(.horizontal, 10).padding(.vertical, 5).background(color.opacity(0.1)).cornerRadius(8) }
     func legendDot(color: Color, label: String) -> some View { HStack(spacing: 4) { Circle().fill(color).frame(width: 6, height: 6); Text(label).font(.caption2).foregroundColor(.secondary) } }
@@ -1626,10 +1620,10 @@ struct EarningsSurprisesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack { Image(systemName: "chart.bar.doc.horizontal.fill").font(.title2).foregroundColor(.indigo); Text("Earnings Surprises (EPS)").font(.headline).foregroundColor(.secondary); Spacer(); HStack(spacing: 8) { HStack(spacing: 4) { Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption); Text("\(beatCount) beats").font(.caption).bold().foregroundColor(.green) }; HStack(spacing: 4) { Image(systemName: "xmark.circle.fill").foregroundColor(.red).font(.caption); Text("\(missCount) misses").font(.caption).bold().foregroundColor(.red) } } }
-            if earnings.contains(where: { $0.surprisePercent != nil }) { VStack(alignment: .leading, spacing: 6) { Text("EPS Surprise %").font(.caption).bold().foregroundColor(.secondary); Chart { ForEach(earnings) { e in if let pct = e.surprisePercent, let period = e.period { let shortPeriod = String(period.prefix(7)); BarMark(x: .value("Period", shortPeriod), y: .value("Surprise %", pct)).foregroundStyle((pct >= 0 ? Color.green : Color.red).gradient).annotation(position: pct >= 0 ? .top : .bottom) { Text(String(format: "%@%.1f%%", pct >= 0 ? "+" : "", pct)).font(.system(size: 8)).bold().foregroundColor(pct >= 0 ? .green : .red) } } }; RuleMark(y: .value("Zero", 0)).foregroundStyle(Color.gray.opacity(0.5)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3])) }.frame(height: 100) }.padding(10).background(Color.gray.opacity(0.05)).cornerRadius(8) }
-            Chart { ForEach(chartData) { bar in BarMark(x: .value("Period", bar.period), y: .value("EPS", bar.value)).foregroundStyle(bar.color.gradient).position(by: .value("Type", bar.type)) }; if let sel = selectedPeriod { let relevant = earnings.first { String(($0.period ?? "").prefix(7)) == sel }; if let e = relevant { RuleMark(x: .value("Period", sel)).foregroundStyle(Color.gray.opacity(0.25)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 4) { Text(sel).bold().font(.caption); if let est = e.estimate { Text(String(format: "Estimate: %.3f", est)).font(.caption2).foregroundColor(.gray) }; if let act = e.actual { Text(String(format: "Actual: %.3f", act)).font(.caption2).foregroundColor(act >= (e.estimate ?? act) ? .green : .red) }; if let pct = e.surprisePercent { Text(String(format: "Surprise: %@%.2f%%", pct >= 0 ? "+" : "", pct)).font(.caption2).bold().foregroundColor(pct >= 0 ? .green : .red) } }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10) } } }.chartForegroundStyleScale(["Estimate": Color.gray.opacity(0.6), "Actual": Color.green]).frame(height: 200).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedPeriod = x }; case .ended: selectedPeriod = nil } } } }
+            if earnings.contains(where: { $0.surprisePercent != nil }) { VStack(alignment: .leading, spacing: 6) { Text("EPS Surprise %").font(.caption).bold().foregroundColor(.secondary); Chart { ForEach(earnings) { e in if let pct = e.surprisePercent, let period = e.period { let shortPeriod = String(period.prefix(7)); BarMark(x: .value("Period", shortPeriod), y: .value("Surprise %", pct)).foregroundStyle((pct >= 0 ? Color.green : Color.red).gradient).annotation(position: pct >= 0 ? .top : .bottom) { Text(String(format: "%@%.1f%%", pct >= 0 ? "+" : "", pct)).font(.system(size: 8)).bold().foregroundColor(pct >= 0 ? .green : .red) } } }; RuleMark(y: .value("Zero", 0)).foregroundStyle(Color.gray.opacity(0.5)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3])) }.frame(height: 150) }.padding(10).background(Color.gray.opacity(0.05)).cornerRadius(8) }
+            Chart { ForEach(chartData) { bar in BarMark(x: .value("Period", bar.period), y: .value("EPS", bar.value)).foregroundStyle(bar.color.gradient).position(by: .value("Type", bar.type)) }; if let sel = selectedPeriod { let relevant = earnings.first { String(($0.period ?? "").prefix(7)) == sel }; if let e = relevant { RuleMark(x: .value("Period", sel)).foregroundStyle(Color.gray.opacity(0.25)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { VStack(alignment: .leading, spacing: 4) { Text(sel).bold().font(.caption); if let est = e.estimate { Text(String(format: "Estimate: %.3f", est)).font(.caption2).foregroundColor(.gray) }; if let act = e.actual { Text(String(format: "Actual: %.3f", act)).font(.caption2).foregroundColor(act >= (e.estimate ?? act) ? .green : .red) }; if let pct = e.surprisePercent { Text(String(format: "Surprise: %@%.2f%%", pct >= 0 ? "+" : "", pct)).font(.caption2).bold().foregroundColor(pct >= 0 ? .green : .red) } }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10) } } }.chartForegroundStyleScale(["Estimate": Color.gray.opacity(0.6), "Actual": Color.green]).frame(height: 300).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedPeriod = x }; case .ended: selectedPeriod = nil } } } }
             HStack(spacing: 12) { HStack(spacing: 4) { RoundedRectangle(cornerRadius: 2).fill(Color.gray.opacity(0.6)).frame(width: 12, height: 8); Text("Estimate").font(.caption2).foregroundColor(.secondary) }; HStack(spacing: 4) { RoundedRectangle(cornerRadius: 2).fill(Color.green).frame(width: 12, height: 8); Text("Beat").font(.caption2).foregroundColor(.secondary) }; HStack(spacing: 4) { RoundedRectangle(cornerRadius: 2).fill(Color.red).frame(width: 12, height: 8); Text("Miss").font(.caption2).foregroundColor(.secondary) }; Spacer(); Text("Hover bars for details").font(.caption2).foregroundColor(.secondary).italic() }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.indigo.opacity(0.2), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.indigo.opacity(0.2), lineWidth: 1))
     }
 }
 
@@ -1643,9 +1637,9 @@ struct PeersComparisonView: View {
                     BarMark(x: .value("Ticker", mainTicker), y: .value("P/E", mainPE)).foregroundStyle(Color.blue.gradient).annotation(position: .top) { Text(String(format: "%.1f", mainPE)).font(.caption).bold() }
                     ForEach(peers) { peer in BarMark(x: .value("Ticker", peer.ticker), y: .value("P/E", peer.pe)).foregroundStyle(Color.purple.opacity(0.3).gradient).annotation(position: .top) { Text(String(format: "%.1f", peer.pe)).font(.caption).foregroundColor(.secondary) } }
                     if let selectedTicker { RuleMark(x: .value("Ticker", selectedTicker)).foregroundStyle(Color.gray.opacity(0.3)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { let peVal = (selectedTicker == mainTicker) ? mainPE : (peers.first(where: { $0.ticker == selectedTicker })?.pe ?? 0); VStack { Text(selectedTicker).bold(); Text("P/E: \(String(format: "%.2f", peVal))") }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4) }.zIndex(10) }
-                }.frame(height: 200).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedTicker = x }; case .ended: selectedTicker = nil } } } }
+                }.frame(height: 300).chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedTicker = x }; case .ended: selectedTicker = nil } } } }
             }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1657,9 +1651,9 @@ struct PEComparisonChart: View {
             HStack { Image(systemName: "chart.bar.xaxis").font(.title2).foregroundColor(.blue); Text("Valuation Reality Check (P/E Ratios)").font(.headline).foregroundColor(.secondary) }
             if currentPE == 0 && historicalPE == 0 && exitMultiple == 0 { Text("Enter P/E data to visualize comparison").font(.caption).italic().foregroundColor(.secondary) } else {
                 Chart(data) { point in BarMark(x: .value("Type", point.type), y: .value("P/E Ratio", point.value)).foregroundStyle(point.color.gradient).annotation(position: .top) { Text(String(format: "%.1fx", point.value)).font(.caption).bold() } }
-                .chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedType = x }; case .ended: selectedType = nil } } } }.frame(height: 200)
+                .chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let x: String = proxy.value(atX: l.x) { selectedType = x }; case .ended: selectedType = nil } } } }.frame(height: 300)
             }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1670,7 +1664,7 @@ struct PEGRatioGauge: View {
             HStack { Image(systemName: "gauge.with.needle").font(.title2).foregroundColor(.blue); Text("PEG Ratio (Lynch Valuation)").font(.headline).foregroundColor(.secondary); Spacer(); Text(String(format: "%.2f", peg)).font(.title2).bold().foregroundColor(statusColor) }
             GeometryReader { geo in ZStack(alignment: .leading) { Rectangle().fill(LinearGradient(stops: [.init(color: .green.opacity(0.8), location: 0.0), .init(color: .green.opacity(0.8), location: 0.33), .init(color: .yellow, location: 0.33), .init(color: .yellow, location: 0.5), .init(color: .red.opacity(0.8), location: 0.5), .init(color: .red.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10); Image(systemName: "arrowtriangle.down.fill").foregroundColor(.primary).font(.title3).offset(x: (geo.size.width * pegProgress) - 10, y: -20); Text(statusText).font(.caption2).bold().foregroundColor(statusColor).offset(x: (geo.size.width * pegProgress) - 10, y: 22).fixedSize() } }.frame(height: 50)
             HStack { Text("0.0").font(.tiny); Spacer(); Text("1.0 (Cheap)").font(.tiny).padding(.trailing, 40); Spacer(); Text("3.0+").font(.tiny) }.foregroundColor(.gray)
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1681,7 +1675,7 @@ struct FCFYieldGauge: View {
             HStack { Image(systemName: "banknote.fill").font(.title2).foregroundColor(.blue); Text("FCF Yield (Market Payback)").font(.headline).foregroundColor(.blue); Spacer(); Text(String(format: "%.2f%%", yield)).font(.title2).bold().foregroundColor(statusColor) }
             GeometryReader { geo in ZStack(alignment: .leading) { Rectangle().fill(LinearGradient(stops: [.init(color: .red.opacity(0.8), location: 0.0), .init(color: .red.opacity(0.8), location: 0.3), .init(color: .yellow, location: 0.3), .init(color: .yellow, location: 0.7), .init(color: .green.opacity(0.8), location: 0.7), .init(color: .green.opacity(0.8), location: 1.0)], startPoint: .leading, endPoint: .trailing)).frame(height: 20).cornerRadius(10); Image(systemName: "arrowtriangle.down.fill").foregroundColor(.primary).font(.title3).offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: -20); Text(statusText).font(.caption2).bold().foregroundColor(statusColor).offset(x: max(0, (geo.size.width * yieldProgress) - 10), y: 22).fixedSize() } }.frame(height: 50)
             HStack { Text("0%").font(.tiny); Spacer(); Text("5% (Avg)").font(.tiny); Spacer(); Text("10%+").font(.tiny) }.foregroundColor(.gray)
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1708,9 +1702,9 @@ struct PriceRangeChart: View {
             HStack { Image(systemName: "arrow.down.right.circle.fill").font(.title2).foregroundColor(.blue); Text("Price vs 52-Week High").font(.headline).foregroundColor(.secondary); Spacer(); if drawdown < -0.1 { Text("\(String(format: "%.1f", drawdown))%").font(.title3).bold().foregroundColor(.red) } }
             Chart(data) { item in BarMark(x: .value("Price", item.value), y: .value("Type", item.label)).foregroundStyle(item.color.gradient).annotation(position: .trailing) { Text(String(format: "%.2f %@", item.value, symbol)).font(.caption).foregroundColor(.secondary) }
                 if let selectedLabel, selectedLabel == item.label { RuleMark(y: .value("Type", selectedLabel)).foregroundStyle(Color.gray.opacity(0.3)).annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) { Text("\(item.label): \(String(format: "%.2f", item.value))").padding(6).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(6).shadow(radius: 2) }.zIndex(10) }
-            }.chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let y: String = proxy.value(atY: l.y) { selectedLabel = y }; case .ended: selectedLabel = nil } } } }.frame(height: 160).chartXAxis { AxisMarks(position: .bottom) }.chartYAxis { AxisMarks(position: .leading) }
+            }.chartOverlay { proxy in GeometryReader { _ in Rectangle().fill(.clear).contentShape(Rectangle()).onContinuousHover { phase in switch phase { case .active(let l): if let y: String = proxy.value(atY: l.y) { selectedLabel = y }; case .ended: selectedLabel = nil } } } }.frame(height: 360).chartXAxis { AxisMarks(position: .bottom) }.chartYAxis { AxisMarks(position: .leading) }
             if drawdown < -20 { Text("📉 Trading significantly below highs. Potential opportunity if fundamentals are intact.").font(.caption).italic().foregroundColor(.secondary) }
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1728,7 +1722,7 @@ struct ExoticBetaGauge: View {
                 Circle().fill(Color(nsColor: .windowBackgroundColor)).frame(width: 20, height: 20).overlay(Circle().stroke(Color.gray, lineWidth: 2))
                 VStack { Spacer(); Text(riskText).font(.system(size: 14, weight: .heavy, design: .monospaced)).foregroundColor(colorZone).padding(.top, 40).shadow(color: colorZone.opacity(0.5), radius: 5) }
             }.frame(height: 110).padding(.bottom, 10)
-        }.padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+        }.frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12).overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -1850,14 +1844,14 @@ struct PDFExportView: View {
                             Chart {
                                 RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red.opacity(0.7)).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
                                 ForEach(scenarioResults) { item in BarMark(x: .value("Scenario", item.name), y: .value("Value", item.value)).foregroundStyle(item.color.gradient).annotation(position: .top) { Text(String(format: "%.0f", item.value)).font(.caption2).bold() } }
-                            }.frame(height: 140).chartYAxis { AxisMarks(position: .leading) }
+                            }.frame(height: 210).chartYAxis { AxisMarks(position: .leading) }
                         }
                         if !projectionData.isEmpty {
                             Text("Value Projection (5Y)").font(.headline).foregroundColor(.secondary)
                             Chart {
                                 RuleMark(y: .value("Price", currentPrice)).foregroundStyle(.red.opacity(0.7)).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
                                 ForEach(projectionData) { pt in LineMark(x: .value("Year", pt.year), y: .value("Value", pt.value)).foregroundStyle(.blue).interpolationMethod(.monotone); PointMark(x: .value("Year", pt.year), y: .value("Value", pt.value)).foregroundStyle(.blue) }
-                            }.frame(height: 140)
+                            }.frame(height: 210)
                         }
                     }.frame(maxWidth: .infinity)
                     
@@ -1893,7 +1887,7 @@ struct PDFExportView: View {
                                 }
                             }
                             .chartXScale(domain: mcMin...mcMax)
-                            .frame(height: 100)
+                            .frame(height: 150)
                             let aboveCount = monteCarloResults.filter { ($0.bucketMin + $0.bucketMax) / 2 >= currentPrice }.map(\.frequency).reduce(0, +)
                             let totalCount = monteCarloResults.map(\.frequency).reduce(0, +)
                             let prob = totalCount > 0 ? Double(aboveCount) / Double(totalCount) * 100 : 0
@@ -2044,7 +2038,7 @@ struct InsiderTradesChart: View {
                     .foregroundStyle(Color.gray.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1))
             }
-            .frame(height: 200)
+            .frame(height: 300)
             .chartOverlay { proxy in
                 GeometryReader { geo in
                     Rectangle().fill(.clear).contentShape(Rectangle())
@@ -2155,7 +2149,7 @@ struct PFCFHistoryChartView: View {
                 }
             }
             .chartYScale(domain: yMin...yMax)
-            .frame(height: 200)
+            .frame(height: 300)
             .chartOverlay { proxy in
                 GeometryReader { _ in
                     Rectangle().fill(.clear).contentShape(Rectangle())
@@ -2170,7 +2164,7 @@ struct PFCFHistoryChartView: View {
             Text("Low P/FCF historically signals better entry points. Hover bars to compare vs 5Y average.")
                 .font(.caption2).foregroundColor(.secondary).italic()
         }
-        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.purple.opacity(0.2), lineWidth: 1))
     }
 }
@@ -2235,7 +2229,7 @@ struct RevenueMarginChartView: View {
                 }
             }
             .chartForegroundStyleScale(["Revenue ($M)": Color.cyan.opacity(0.6), "Net Margin %": Color.orange])
-            .frame(height: 220)
+            .frame(height: 330)
             .chartOverlay { proxy in
                 GeometryReader { _ in
                     Rectangle().fill(.clear).contentShape(Rectangle())
@@ -2248,7 +2242,7 @@ struct RevenueMarginChartView: View {
                 }
             }
         }
-        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.cyan.opacity(0.2), lineWidth: 1))
     }
 
@@ -2336,7 +2330,7 @@ struct FairValueDonutView: View {
                     .opacity(hoveredId == nil || hoveredId == slice.id ? 1 : 0.45)
                 }
                 .chartAngleSelection(value: .constant(nil as Double?))
-                .frame(width: 160, height: 160)
+                .frame(width: 160, height: 360)
                 .chartOverlay { proxy in
                     GeometryReader { geo in
                         Rectangle().fill(.clear).contentShape(Rectangle())
@@ -2389,160 +2383,152 @@ struct FairValueDonutView: View {
                 Spacer()
             }
         }
-        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.indigo.opacity(0.2), lineWidth: 1))
     }
 }
 
-// 4. Break-Even Chart — at what purchase price is DCF exactly break-even for each growth rate?
-struct BreakEvenChartView: View {
+// 4. Margin of Safety Entry Range — concrete buy targets at 10/20/30/40% MoS
+struct MoSEntryRangeView: View {
+    let intrinsicValue: Double
     let currentPrice: Double
-    let fcfPerShare: Double
-    let discountRate: Double
-    let exitMultiple: Double
-    let cash: Double
-    let debt: Double
-    let shares: Double
     let symbol: String
-    let computeDCF: (Double, Double) -> Double
 
-    struct BEPoint: Identifiable { let id = UUID(); let growth: Double; let breakEvenPrice: Double }
+    struct MoSLevel: Identifiable {
+        let id = UUID()
+        let label: String
+        let pct: Double
+        let targetPrice: Double
+        let color: Color
+        var isActive: Bool // current price is at or below this target
+    }
 
-    var points: [BEPoint] {
-        stride(from: 0.0, through: 30.0, by: 1.0).map { g in
-            BEPoint(growth: g, breakEvenPrice: computeDCF(g, discountRate))
+    var levels: [MoSLevel] {
+        [10, 20, 30, 40].map { pct in
+            let tp = intrinsicValue * (1 - Double(pct) / 100)
+            return MoSLevel(
+                label: "\(pct)% MoS", pct: Double(pct), targetPrice: tp,
+                color: pct == 10 ? .blue : pct == 20 ? .teal : pct == 30 ? .green : .mint,
+                isActive: currentPrice > 0 && currentPrice <= tp
+            )
         }
     }
 
-    @State private var hoveredGrowth: Double? = nil
-    var hoveredPt: BEPoint? {
-        guard let h = hoveredGrowth else { return nil }
-        return points.min(by: { abs($0.growth - h) < abs($1.growth - h) })
+    var currentMoS: Double {
+        guard currentPrice > 0, intrinsicValue > 0 else { return 0 }
+        return ((intrinsicValue - currentPrice) / intrinsicValue) * 100
     }
 
-    var allValues: [Double] { points.map(\.breakEvenPrice) + [currentPrice] }
-    var yMin: Double { max(0, (allValues.min() ?? 0) * 0.85) }
-    var yMax: Double { (allValues.max() ?? 100) * 1.15 }
-
-    // Find break-even growth for current price
-    var breakEvenGrowth: Double? {
-        for i in 0..<(points.count - 1) {
-            if (points[i].breakEvenPrice - currentPrice) * (points[i+1].breakEvenPrice - currentPrice) < 0 {
-                return (points[i].growth + points[i+1].growth) / 2
-            }
-        }
-        return nil
-    }
+    @State private var hoveredLabel: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Image(systemName: "arrow.left.arrow.right.circle.fill").font(.title2).foregroundColor(.green)
-                Text("Break-Even Analysis").font(.headline).foregroundColor(.secondary)
+                Image(systemName: "shield.lefthalf.filled").font(.title2).foregroundColor(.green)
+                Text("Margin of Safety Entry Targets").font(.headline).foregroundColor(.secondary)
                 Spacer()
-                if let beg = breakEvenGrowth {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Break-even growth").font(.caption2).foregroundColor(.secondary)
-                        Text(String(format: "%.1f%% / yr", beg)).font(.title3).bold().foregroundColor(.green)
-                    }
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Current MoS").font(.caption2).foregroundColor(.secondary)
+                    Text(String(format: "%.1f%%", currentMoS))
+                        .font(.title3).bold()
+                        .foregroundColor(currentMoS >= 30 ? .green : currentMoS >= 15 ? .orange : .red)
                 }
             }
 
-            Text("The green zone shows growth rates where DCF fair value exceeds the current market price — your margin of safety range.")
-                .font(.caption).foregroundColor(.secondary)
-
-            Chart {
-                // Colored area zones
-                ForEach(points) { pt in
-                    AreaMark(x: .value("Growth", pt.growth), y: .value("Break-even Price", pt.breakEvenPrice))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: pt.breakEvenPrice >= currentPrice
-                                    ? [Color.green.opacity(0.2), Color.green.opacity(0.05)]
-                                    : [Color.red.opacity(0.15), Color.red.opacity(0.03)],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("Growth", pt.growth), y: .value("Break-even Price", pt.breakEvenPrice))
-                        .foregroundStyle(
-                            LinearGradient(
-                                stops: [.init(color: .red, location: 0), .init(color: .green, location: 1)],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        .interpolationMethod(.monotone)
-                }
-                // Current price horizontal rule
-                RuleMark(y: .value("Current Price", currentPrice))
-                    .foregroundStyle(.orange)
-                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                    .annotation(position: .top, alignment: .trailing) {
-                        Text(String(format: "Market: %.0f %@", currentPrice, symbol)).font(.caption2).foregroundColor(.orange)
+            // Horizontal bar showing intrinsic value with MoS zones
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Background track
+                    RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.12)).frame(height: 44)
+                    // MoS zones as colored segments
+                    ForEach(levels) { level in
+                        let xPos = CGFloat(1 - level.pct / 100) * geo.size.width
+                        RoundedRectangle(cornerRadius: 0)
+                            .fill(level.color.opacity(0.2))
+                            .frame(width: geo.size.width - xPos, height: 44)
+                            .offset(x: xPos)
                     }
-                // Break-even vertical marker
-                if let beg = breakEvenGrowth {
-                    RuleMark(x: .value("Break-even", beg))
-                        .foregroundStyle(.green.opacity(0.6))
-                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                        .annotation(position: .bottom) {
-                            Text(String(format: "%.1f%%", beg)).font(.caption2).bold().foregroundColor(.green)
-                        }
-                }
-                // Hover crosshair
-                if let pt = hoveredPt {
-                    PointMark(x: .value("Growth", pt.growth), y: .value("Price", pt.breakEvenPrice))
-                        .foregroundStyle(pt.breakEvenPrice >= currentPrice ? Color.green : Color.red)
-                        .symbolSize(80)
-                    RuleMark(x: .value("Hover", pt.growth))
-                        .foregroundStyle(Color.gray.opacity(0.25))
-                        .annotation(position: .top, overflowResolution: .init(x: .fit, y: .fit)) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(String(format: "Growth: %.0f%%", pt.growth)).font(.caption).bold()
-                                Text(String(format: "Fair Value: %.2f %@", pt.breakEvenPrice, symbol)).font(.caption2)
-                                    .foregroundColor(pt.breakEvenPrice >= currentPrice ? .green : .red)
-                                if currentPrice > 0 {
-                                    let mos = ((pt.breakEvenPrice - currentPrice) / pt.breakEvenPrice) * 100
-                                    Text(String(format: "Margin of Safety: %.1f%%", mos))
-                                        .font(.caption2).bold()
-                                        .foregroundColor(mos > 0 ? .green : .red)
-                                }
-                            }.padding(8).background(Color(nsColor: .windowBackgroundColor)).cornerRadius(8).shadow(radius: 4)
-                        }.zIndex(10)
+                    // MoS level markers
+                    ForEach(levels) { level in
+                        let xPos = CGFloat(1 - level.pct / 100) * geo.size.width
+                        Capsule().fill(level.color).frame(width: 2, height: 44).offset(x: xPos)
+                        Text(String(format: "%.0f", level.targetPrice))
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(level.color)
+                            .offset(x: xPos + 3, y: -14)
+                    }
+                    // Intrinsic value marker (right edge)
+                    Capsule().fill(Color.blue).frame(width: 3, height: 52).offset(x: geo.size.width - 1.5)
+                    Text(String(format: "%.0f IV", intrinsicValue)).font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.blue).offset(x: geo.size.width - 40, y: -14)
+                    // Current price marker
+                    if currentPrice > 0 && currentPrice < intrinsicValue {
+                        let xPos = CGFloat(currentPrice / intrinsicValue) * geo.size.width
+                        Capsule().fill(Color.orange).frame(width: 3, height: 52).offset(x: xPos - 1.5)
+                        Text(String(format: "%.0f", currentPrice)).font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.orange).offset(x: max(4, xPos - 16), y: 14)
+                    }
                 }
             }
-            .chartYScale(domain: yMin...yMax)
-            .chartXAxisLabel("FCF Growth Rate (%)", alignment: .center)
-            .chartYAxisLabel("DCF Fair Value (\(symbol))", alignment: .center)
-            .frame(height: 220)
-            .chartOverlay { proxy in
-                GeometryReader { _ in
-                    Rectangle().fill(.clear).contentShape(Rectangle())
-                        .onContinuousHover { phase in
-                            switch phase {
-                            case .active(let l): if let x: Double = proxy.value(atX: l.x) { hoveredGrowth = x }
-                            case .ended: hoveredGrowth = nil
+            .frame(height: 44)
+            .padding(.vertical, 12)
+
+            // Target cards
+            HStack(spacing: 10) {
+                ForEach(levels) { level in
+                    VStack(spacing: 4) {
+                        Text(level.label).font(.caption2).foregroundColor(.secondary)
+                        Text(String(format: "%.2f %@", level.targetPrice, symbol))
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(level.color)
+                        if currentPrice > 0 {
+                            let gap = currentPrice - level.targetPrice
+                            if gap > 0 {
+                                Text(String(format: "-%.1f%%", (gap / currentPrice) * 100))
+                                    .font(.caption2).foregroundColor(.red)
+                                Text("need drop").font(.system(size: 8)).foregroundColor(.secondary)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green).font(.caption)
+                                Text("In zone").font(.system(size: 8)).bold().foregroundColor(.green)
                             }
                         }
+                    }
+                    .padding(.vertical, 8).padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity)
+                    .background(level.isActive ? level.color.opacity(0.12) : Color.gray.opacity(0.06))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(level.isActive ? level.color : Color.clear, lineWidth: 1.5))
                 }
             }
 
-            HStack(spacing: 16) {
-                HStack(spacing: 4) { Rectangle().fill(LinearGradient(colors: [.red, .green], startPoint: .leading, endPoint: .trailing)).frame(width: 20, height: 3).cornerRadius(1); Text("DCF curve").font(.caption2).foregroundColor(.secondary) }
-                HStack(spacing: 4) { Rectangle().fill(Color.orange).frame(width: 16, height: 2).cornerRadius(1); Text("Market price").font(.caption2).foregroundColor(.secondary) }
-                HStack(spacing: 4) { Circle().fill(Color.green).frame(width: 7, height: 7); Text("Undervalued zone").font(.caption2).foregroundColor(.secondary) }
-                HStack(spacing: 4) { Circle().fill(Color.red).frame(width: 7, height: 7); Text("Overvalued zone").font(.caption2).foregroundColor(.secondary) }
+            // Gauge-style current MoS bar
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Current position relative to intrinsic value").font(.caption2).foregroundColor(.secondary)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(LinearGradient(
+                                stops: [.init(color: .red, location: 0), .init(color: .orange, location: 0.3),
+                                        .init(color: .yellow, location: 0.5), .init(color: .green, location: 1)],
+                                startPoint: .leading, endPoint: .trailing
+                            )).frame(height: 10)
+                        let clampedMoS = min(max(currentMoS, 0), 50)
+                        Capsule().fill(Color.white).frame(width: 4, height: 16)
+                            .shadow(radius: 2)
+                            .offset(x: CGFloat(clampedMoS / 50) * geo.size.width - 2)
+                    }
+                }.frame(height: 10)
+                HStack { Text("0% (At price)").font(.tiny); Spacer(); Text("25%").font(.tiny); Spacer(); Text("50%+ (Deep value)").font(.tiny) }
+                    .foregroundColor(.secondary)
             }
         }
-        .padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
+        .frame(maxWidth: .infinity).padding().background(Color(nsColor: .controlBackgroundColor)).cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.green.opacity(0.2), lineWidth: 1))
     }
 }
 
+
 // MARK: - UTILS
 extension Font { static let tiny = Font.system(size: 10) }
 extension Text { func secondaryStr() -> Text { self.foregroundColor(.secondary) } }
-
-
-
