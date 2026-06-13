@@ -221,6 +221,44 @@ struct MonteCarloResult: Identifiable {
     let frequency: Int
 }
 
+// MARK: - History & Compare Models
+struct AnalysisHistoryEntry: Codable, Identifiable {
+    var id = UUID()
+    let date: Date
+    let ticker: String
+    let stockName: String
+    let currentPrice: Double
+    let intrinsicValue: Double
+    let growthRate: Double
+    let discountRate: Double
+    let exitMultiple: Double
+    let currencySymbol: String
+    let fcfCagrDisplay: String?
+    var mosPercent: Double { guard currentPrice > 0, intrinsicValue > 0 else { return 0 }; return ((intrinsicValue - currentPrice) / intrinsicValue) * 100 }
+    private enum CodingKeys: String, CodingKey { case id, date, ticker, stockName, currentPrice, intrinsicValue, growthRate, discountRate, exitMultiple, currencySymbol, fcfCagrDisplay }
+}
+
+struct CompareSnapshot: Identifiable {
+    let id = UUID()
+    let ticker: String
+    let stockName: String
+    let currentPrice: Double
+    let intrinsicValue: Double
+    let growthRate: Double
+    let discountRate: Double
+    let exitMultiple: Double
+    let fcfInput: String
+    let cashInput: String
+    let debtInput: String
+    let currentPEInput: String
+    let currencySymbol: String
+    let betaInput: Double?
+    let fcfCagrDisplay: String?
+    let scenarioResults: [ScenarioResult]
+    let projectionYears: Int
+    var mosPercent: Double { guard currentPrice > 0, intrinsicValue > 0 else { return 0 }; return ((intrinsicValue - currentPrice) / intrinsicValue) * 100 }
+}
+
 struct RevenuePoint: Identifiable, Sendable, Codable {
     var id = UUID()
     let year: String
@@ -700,7 +738,23 @@ struct ContentView: View {
     @AppStorage("userGeminiKey") private var userGeminiKey: String = ""
     @State private var aiAnalysis: String = ""
     @State private var isGeneratingAI: Bool = false
-    @State private var showAISheet: Bool = false // reused as price/FCF ratio points
+    @State private var showAISheet: Bool = false
+
+    // Projection years
+    @AppStorage("defaultProjectionYears") private var defaultProjectionYears: Int = 5
+    @State private var projectionYears: Int = 5
+
+    // History log
+    @State private var analysisHistory: [AnalysisHistoryEntry] = []
+    @State private var showHistorySheet: Bool = false
+
+    // Compare mode
+    @State private var compareSnapshots: [CompareSnapshot] = []
+    @State private var showCompareSheet: Bool = false
+
+    // UI extras
+    @State private var showShareSheet: Bool = false
+    @State private var lastFetchDate: Date? = nil
 
     @State private var showHelp: Bool = false
 
@@ -711,31 +765,45 @@ struct ContentView: View {
 
             if isSidebarVisible {
                 VStack(spacing: 0) {
+                    // TOOLBAR
                     HStack {
-                        Text("DCF Parameters").font(.headline)
+                        Text("DCF").font(.headline)
                         Spacer()
 
                         Button(action: { showHelp.toggle() }) {
                             Image(systemName: "questionmark.circle")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.blue)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Explain DCF Method")
-                        .padding(.trailing, 8)
-                        .popover(isPresented: $showHelp) { DCFHelpView() }
+                                .font(.system(size: 16, weight: .medium)).foregroundColor(.blue)
+                        }.buttonStyle(.plain).help("Explain DCF Method")
+                         .padding(.trailing, 4)
+                         .popover(isPresented: $showHelp) { DCFHelpView() }
 
                         if hasCalculated {
-                            Button(action: exportToPDF) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .foregroundColor(.blue)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Export analysis as PDF")
-                            .padding(.trailing, 4)
+                            Button(action: { showShareSheet = true }) {
+                                Image(systemName: "square.and.arrow.up").foregroundColor(.blue)
+                            }.buttonStyle(.plain).help("Share / Export PDF (⌘E)")
+                             .padding(.trailing, 4)
+                             .sheet(isPresented: $showShareSheet) {
+                                 ShareExportSheet(ticker: ticker.uppercased(), onExportPDF: exportToPDF)
+                             }
+
+                            Button(action: { addToCompare() }) {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "arrow.left.arrow.right").font(.system(size: 11))
+                                    //Text("Compare").font(.caption2).bold()
+                                }.foregroundColor(.teal)
+                                 .padding(.horizontal, 5).padding(.vertical, 3)
+                                 .background(Color.teal.opacity(0.1)).cornerRadius(5)
+                            }.buttonStyle(.plain).help("Add to Compare (⌘D)").padding(.trailing, 4)
                         }
 
-                        // AI Analysis button — shown when Gemini key configured
+                        Button(action: { showHistorySheet = true }) {
+                            Image(systemName: "clock.arrow.circlepath").foregroundColor(.secondary)
+                        }.buttonStyle(.plain).help("History Log (⌘H)")
+                         .padding(.trailing, 4)
+                         .sheet(isPresented: $showHistorySheet) {
+                             HistoryLogSheet(history: $analysisHistory, onLoad: loadFromHistory)
+                         }
+
                         if hasCalculated && !userGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Button(action: { generateAIAnalysis() }) {
                                 HStack(spacing: 4) {
@@ -750,8 +818,8 @@ struct ContentView: View {
                                 .padding(.horizontal, 6).padding(.vertical, 3)
                                 .background(Color.purple.opacity(0.12)).cornerRadius(5)
                             }
-                            .buttonStyle(.plain).help("Generate AI Investment Analysis")
-                            .padding(.trailing, 8).disabled(isGeneratingAI)
+                            .buttonStyle(.plain).help("AI Analysis (⌘⇧A)")
+                            .padding(.trailing, 4).disabled(isGeneratingAI)
                             .sheet(isPresented: $showAISheet) {
                                 AIAnalysisSheet(analysis: aiAnalysis, ticker: ticker.uppercased(), stockName: stockName)
                             }
@@ -759,17 +827,13 @@ struct ContentView: View {
 
                         Button(action: clearAllData) {
                             Image(systemName: "trash").foregroundColor(.red)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Clear all inputs")
-                        .padding(.trailing, 10)
+                        }.buttonStyle(.plain).help("Clear (⌘⌫)").padding(.trailing, 10)
 
                         Divider().frame(height: 15).padding(.horizontal, 5)
 
                         Button(action: { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isSidebarVisible = false } }) {
                             Image(systemName: "sidebar.left").foregroundColor(.primary)
-                        }
-                        .buttonStyle(.plain).help("Hide sidebar")
+                        }.buttonStyle(.plain).help("Hide sidebar (⌘\\)")
                     }
                     .padding().background(Color.blue.opacity(0.1))
 
@@ -779,24 +843,17 @@ struct ContentView: View {
                                 TextField("Ticker", text: $ticker).onSubmit { fetchFinnhubData() }
                                 Button("Load") { fetchFinnhubData() }
                             }
-
                             if !stockName.isEmpty {
                                 HStack(spacing: 8) {
                                     if let logoStr = logoUrl, let url = URL(string: logoStr) {
                                         AsyncImage(url: url) { phase in
-                                            if let image = phase.image {
-                                                image.resizable().aspectRatio(contentMode: .fit)
-                                            } else {
-                                                Rectangle().fill(Color.gray.opacity(0.2))
-                                            }
-                                        }
-                                        .frame(width: 24, height: 24)
-                                        .cornerRadius(4)
+                                            if let image = phase.image { image.resizable().aspectRatio(contentMode: .fit) }
+                                            else { Rectangle().fill(Color.gray.opacity(0.2)) }
+                                        }.frame(width: 24, height: 24).cornerRadius(4)
                                     }
                                     Text(stockName).font(.caption).foregroundColor(.secondary).lineLimit(1)
                                 }
                             }
-
                             HStack {
                                 Text("Current Price:"); Spacer()
                                 if isLoading { ProgressView().scaleEffect(0.5) }
@@ -805,7 +862,7 @@ struct ContentView: View {
                         }
 
                         Section(header: Text("Fundamentals (USD)"), footer: stockAnalysisLink) {
-                            inputRowString(label: "FCF / Share", value: $fcfInput, helpText: "Free Cash Flow per share (Converted)")
+                            inputRowString(label: "FCF / Share", value: $fcfInput, helpText: "Free Cash Flow per share (Converted to USD)")
                             inputRowString(label: "Shares (B)", value: $sharesInput, helpText: "Total shares outstanding (Billions)")
                             inputRowString(label: "Cash (B)", value: $cashInput, helpText: "Total Cash & Equivalents (Billions USD)")
                             inputRowString(label: "Debt (B)", value: $debtInput, helpText: "Total Debt (Billions USD)")
@@ -819,30 +876,44 @@ struct ContentView: View {
                         Section(header: Text("Estimates"), footer: financeChartsLink) {
                             if let cagr = fcfCagrDisplay {
                                 HStack {
-                                    Text("Hist. 5Y FCF CAGR:")
-                                        .font(.caption).foregroundColor(.secondary)
+                                    Text("Hist. 5Y FCF CAGR:").font(.caption).foregroundColor(.secondary)
                                     Spacer()
                                     Text(cagr).font(.caption).bold().foregroundColor(.blue)
                                 }.padding(.bottom, 2)
                             }
-
-                            inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth for 5 years in %")
-                            inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in %")
-
+                            inputRowDouble(label: "FCF Growth Rate", value: $growthRate, suffix: "%", helpText: "Expected annual FCF growth (%) over the projection horizon")
+                            inputRowDouble(label: "Discount Rate", value: $discountRate, suffix: "%", helpText: "Your desired annual return in % (WACC)")
                             if let beta = betaInput {
-                                let riskFree = 4.2
-                                let riskPremium = 5.0
-                                let wacc = riskFree + (beta * riskPremium)
+                                let wacc = 4.2 + (beta * 5.0)
                                 Button(action: { self.discountRate = Double(String(format: "%.1f", wacc)) ?? 10.0 }) {
-                                    HStack {
-                                        Image(systemName: "wand.and.stars")
-                                        Text("Apply WACC: \(String(format: "%.1f", wacc))% (Beta \(String(format: "%.2f", beta)))")
-                                    }
-                                    .font(.caption)
+                                    HStack { Image(systemName: "wand.and.stars"); Text("Apply WACC: \(String(format: "%.1f", wacc))% (Beta \(String(format: "%.2f", beta)))") }.font(.caption)
                                 }.buttonStyle(.plain).foregroundColor(.blue).padding(.bottom, 5)
                             }
+                            inputRowDouble(label: "Exit Multiple", value: $exitMultiple, suffix: "x", helpText: "Expected P/FCF ratio at the end of the projection horizon")
+                        }
 
-                            inputRowDouble(label: "Exit Multiple", value: $exitMultiple, suffix: "x", helpText: "Expected P/E ratio in 5 years")
+                        Section(header: Text("Projection Horizon")) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("Years").font(.caption).foregroundColor(.secondary)
+                                    InfoButton(helpText: "Number of years for the DCF projection. Default 5Y — more years increases terminal value weight.")
+                                    Spacer()
+                                    Text("\(projectionYears)Y").font(.caption).bold().foregroundColor(.blue)
+                                        .padding(.horizontal, 8).padding(.vertical, 2)
+                                        .background(Color.blue.opacity(0.1)).cornerRadius(4)
+                                }
+                                Slider(
+                                    value: Binding(get: { Double(projectionYears) }, set: { projectionYears = Int($0) }),
+                                    in: 3...10, step: 1
+                                ).tint(.blue)
+                                HStack {
+                                    Text("3Y").font(.tiny).foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("5Y").font(.tiny).foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("10Y").font(.tiny).foregroundColor(.secondary)
+                                }
+                            }
                         }
                     }
                     .formStyle(.grouped)
@@ -850,7 +921,9 @@ struct ContentView: View {
                     Divider()
                     Button(action: { calculateIntrinsicValue() }) {
                         Text("CALCULATE").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 5)
-                    }.buttonStyle(.borderedProminent).controlSize(.large).padding().background(Color(nsColor: .windowBackgroundColor)).keyboardShortcut(.return, modifiers: .command)
+                    }.buttonStyle(.borderedProminent).controlSize(.large).padding()
+                     .background(Color(nsColor: .windowBackgroundColor))
+                     .keyboardShortcut(.return, modifiers: .command)
                 }
                 .frame(width: sidebarWidth)
                 .transition(.move(edge: .leading))
@@ -860,149 +933,155 @@ struct ContentView: View {
                 Divider().overlay(Color.gray.opacity(0.1)).frame(width: 5).contentShape(Rectangle())
                     .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
                     .gesture(DragGesture().onChanged { value in
-                        var t = Transaction()
-                        t.disablesAnimations = true
-                        withTransaction(t) {
-                            let n = lastSidebarWidth + value.translation.width
-                            if n > 250 && n < 600 { sidebarWidth = n }
-                        }
+                        var t = Transaction(); t.disablesAnimations = true
+                        withTransaction(t) { let n = lastSidebarWidth + value.translation.width; if n > 250 && n < 600 { sidebarWidth = n } }
                     }.onEnded { _ in lastSidebarWidth = sidebarWidth })
             }
 
-            // --- MAIN CONTENT ---
+            // MAIN CONTENT
             ZStack(alignment: .topLeading) {
                 Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
+                VStack(spacing: 0) {
+                    ScrollView {
+                        if hasCalculated {
+                            VStack(spacing: 30) {
+                                ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
+                                    .padding(.top, 40)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                    .animation(.spring(response: 0.5, dampingFraction: 0.75), value: intrinsicValue)
 
-                ScrollView {
-                    if hasCalculated {
-                        VStack(spacing: 30) {
-                            ResultHeaderView(priceDisplay: priceDisplay, intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
-                                .padding(.top, 40)
-
-                            if currentPrice > 0 {
-                                ValuationBarChart(marketPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
-                                    .frame(maxWidth: .infinity, minHeight: 375).padding(.horizontal)
-                            }
-                            
-                            // NOUVEAU: Scénario en dessous de Market vs Value
-                            if !scenarioResults.isEmpty {
-                                ScenarioComparisonChart(data: scenarioResults, currentPrice: currentPrice, symbol: currencySymbol)
-                                    .padding(.horizontal)
-                            }
-
-                            if currentPrice > 0 {
-                                InteractiveReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol, calculateValuation: runSimulationWithGrowth)
-                                    .padding(.horizontal)
-                                    
-                                // NOUVEAU: Graphe Reverse DCF Curve
-                                ReverseDCFChartView(currentPrice: currentPrice, userGrowth: growthRate, calculateValuation: runSimulationWithGrowth, symbol: currencySymbol)
-                                    .padding(.horizontal)
-                            }
-
-                            if !projectionData.isEmpty {
-                                ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
-                                    .padding(.horizontal)
-                            }
-                            
-                            if !monteCarloResults.isEmpty {
-                                MonteCarloChart(results: monteCarloResults, symbol: currencySymbol, currentPrice: currentPrice)
-                                    .padding(.horizontal)
-                            }
-
-                            SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
-                                .padding(.horizontal)
-                                
-                            if parseDouble(fcfInput) > 0 && currentPrice > 0 {
-                                PaybackTimeView(fcfPerShare: parseDouble(fcfInput), currentPrice: currentPrice, growthRate: growthRate)
-                                    .padding(.horizontal)
-                            }
-
-                            FinancialHealthView(cash: parseDouble(cashInput), debt: parseDouble(debtInput), fcfPerShare: parseDouble(fcfInput), growthRate: growthRate, symbol: currencySymbol)
-                                .padding(.horizontal)
-
-                            if !fcfHistory.isEmpty {
-                                FCFHistoryChartView(history: fcfHistory, cagrDisplay: fcfCagrDisplay)
-                                    .padding(.horizontal)
-                            }
-
-                            // NEW: P/FCF History
-                            if pfcfHistory.count >= 2 {
-                                PFCFHistoryChartView(history: pfcfHistory, currentPFCF: parseDouble(currentPEInput) > 0 ? parseDouble(currentPEInput) : nil)
-                                    .padding(.horizontal)
-                            }
-
-                            // NEW: Margin of Safety Entry Range
-                            if intrinsicValue > 0 {
-                                MoSEntryRangeView(
-                                    intrinsicValue: intrinsicValue,
-                                    currentPrice: currentPrice,
-                                    symbol: currencySymbol
-                                ).padding(.horizontal)
-                            }
-
-                            // NEW: RSI + Bollinger Bands
-                            if !pricePoints.isEmpty {
-                                RSIBollingerView(points: pricePoints, symbol: currencySymbol).padding(.horizontal)
-                            }
-                            
-                            if !recommendationData.isEmpty {
-                                AnalystConsensusChart(data: recommendationData)
-                                    .padding(.horizontal)
-                            }
-
-                            if let pt = priceTarget, pt.targetMean != nil {
-                                PriceTargetView(priceTarget: pt, currentPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol)
-                                    .padding(.horizontal)
-                            }
-
-                            if !earningsData.isEmpty {
-                                EarningsSurprisesView(earnings: earningsData)
-                                    .padding(.horizontal)
-                            }
-
-                            if !peersData.isEmpty {
-                                PeersComparisonView(mainTicker: ticker, mainPE: parseDouble(currentPEInput), peers: peersData)
-                                    .padding(.horizontal)
-                            }
-
-                            PEComparisonChart(currentPE: parseDouble(currentPEInput), historicalPE: parseDouble(historicalPEInput), exitMultiple: exitMultiple)
-                                .padding(.horizontal)
-
-                            if parseDouble(currentPEInput) > 0 && growthRate > 0 {
-                                PEGRatioGauge(currentPE: parseDouble(currentPEInput), growthRate: growthRate)
-                                    .padding(.horizontal)
-                            }
-
-                            if parseDouble(fcfInput) > 0 && currentPrice > 0 {
-                                FCFYieldGauge(fcfPerShare: parseDouble(fcfInput), currentPrice: currentPrice)
-                                    .padding(.horizontal)
-                            }
-
-                            if intrinsicValue > 0 {
-                                BuyBoxView(intrinsicValue: intrinsicValue, currentPrice: currentPrice, marginOfSafety: $marginOfSafety, symbol: currencySymbol)
-                                    .padding(.horizontal)
-
-                                if yearHigh > 0 && !isADR {
-                                    PriceRangeChart(currentPrice: currentPrice, yearHigh: yearHigh, symbol: currencySymbol)
+                                if !scenarioResults.isEmpty {
+                                    ScenarioComparisonChart(data: scenarioResults, currentPrice: currentPrice, symbol: currencySymbol)
                                         .padding(.horizontal)
+                                        .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.1), value: hasCalculated)
                                 }
-                            }
 
-                            if let beta = betaInput {
-                                ExoticBetaGauge(beta: beta).padding(.horizontal).padding(.bottom, 50)
-                            } else {
-                                Color.clear.frame(height: 50)
+                                if currentPrice > 0 {
+                                    InteractiveReverseDCFView(impliedGrowth: marketImpliedGrowth, userGrowth: growthRate, currentPrice: currentPrice, symbol: currencySymbol, calculateValuation: runSimulationWithGrowth)
+                                        .padding(.horizontal)
+                                        .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.15), value: hasCalculated)
+                                    ReverseDCFChartView(currentPrice: currentPrice, userGrowth: growthRate, calculateValuation: runSimulationWithGrowth, symbol: currencySymbol)
+                                        .padding(.horizontal)
+                                        .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.2), value: hasCalculated)
+                                }
+
+                                if !projectionData.isEmpty {
+                                    ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
+                                        .padding(.horizontal)
+                                        .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.25), value: hasCalculated)
+                                }
+
+                                if !monteCarloResults.isEmpty {
+                                    MonteCarloChart(results: monteCarloResults, symbol: currencySymbol, currentPrice: currentPrice)
+                                        .padding(.horizontal)
+                                        .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.3), value: hasCalculated)
+                                }
+
+                                SensitivityMatrixView(baseGrowth: growthRate, baseDiscount: discountRate, currentPrice: currentPrice, calculate: runSimulation)
+                                    .padding(.horizontal)
+                                    .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.35), value: hasCalculated)
+
+                                if parseDouble(fcfInput) > 0 && currentPrice > 0 {
+                                    PaybackTimeView(fcfPerShare: parseDouble(fcfInput), currentPrice: currentPrice, growthRate: growthRate)
+                                        .padding(.horizontal)
+                                        .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.4), value: hasCalculated)
+                                }
+
+                                FinancialHealthView(cash: parseDouble(cashInput), debt: parseDouble(debtInput), fcfPerShare: parseDouble(fcfInput), growthRate: growthRate, symbol: currencySymbol)
+                                    .padding(.horizontal)
+                                    .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.45), value: hasCalculated)
+
+                                if !fcfHistory.isEmpty {
+                                    FCFHistoryChartView(history: fcfHistory, cagrDisplay: fcfCagrDisplay)
+                                        .padding(.horizontal).transition(.opacity)
+                                }
+
+                                if pfcfHistory.count >= 2 {
+                                    PFCFHistoryChartView(history: pfcfHistory, currentPFCF: parseDouble(currentPEInput) > 0 ? parseDouble(currentPEInput) : nil)
+                                        .padding(.horizontal).transition(.opacity)
+                                }
+
+                                if intrinsicValue > 0 {
+                                    MoSEntryRangeView(intrinsicValue: intrinsicValue, currentPrice: currentPrice, symbol: currencySymbol)
+                                        .padding(.horizontal).transition(.opacity)
+                                }
+
+                                if !pricePoints.isEmpty {
+                                    RSIBollingerView(points: pricePoints, symbol: currencySymbol).padding(.horizontal).transition(.opacity)
+                                }
+
+                                if !recommendationData.isEmpty {
+                                    AnalystConsensusChart(data: recommendationData).padding(.horizontal).transition(.opacity)
+                                }
+
+                                if let pt = priceTarget, pt.targetMean != nil {
+                                    PriceTargetView(priceTarget: pt, currentPrice: currentPrice, intrinsicValue: intrinsicValue, symbol: currencySymbol).padding(.horizontal).transition(.opacity)
+                                }
+
+                                if !earningsData.isEmpty {
+                                    EarningsSurprisesView(earnings: earningsData).padding(.horizontal).transition(.opacity)
+                                }
+
+                                if !peersData.isEmpty {
+                                    PeersComparisonView(mainTicker: ticker, mainPE: parseDouble(currentPEInput), peers: peersData).padding(.horizontal).transition(.opacity)
+                                }
+
+                                PEComparisonChart(currentPE: parseDouble(currentPEInput), historicalPE: parseDouble(historicalPEInput), exitMultiple: exitMultiple).padding(.horizontal).transition(.opacity)
+
+                                if parseDouble(currentPEInput) > 0 && growthRate > 0 {
+                                    PEGRatioGauge(currentPE: parseDouble(currentPEInput), growthRate: growthRate).padding(.horizontal).transition(.opacity)
+                                }
+
+                                if parseDouble(fcfInput) > 0 && currentPrice > 0 {
+                                    FCFYieldGauge(fcfPerShare: parseDouble(fcfInput), currentPrice: currentPrice).padding(.horizontal).transition(.opacity)
+                                }
+
+                                if intrinsicValue > 0 {
+                                    BuyBoxView(intrinsicValue: intrinsicValue, currentPrice: currentPrice, marginOfSafety: $marginOfSafety, symbol: currencySymbol).padding(.horizontal).transition(.opacity)
+                                    if yearHigh > 0 && !isADR {
+                                        PriceRangeChart(currentPrice: currentPrice, yearHigh: yearHigh, symbol: currencySymbol).padding(.horizontal).transition(.opacity)
+                                    }
+                                }
+
+                                if let beta = betaInput {
+                                    ExoticBetaGauge(beta: beta).padding(.horizontal).padding(.bottom, 20).transition(.opacity)
+                                } else { Color.clear.frame(height: 20) }
                             }
+                            .frame(maxWidth: .infinity).padding(.horizontal, 20)
+                        } else {
+                            VStack(spacing: 16) {
+                                Spacer()
+                                Image(systemName: "chart.line.uptrend.xyaxis")
+                                    .font(.system(size: 60)).foregroundColor(.secondary.opacity(0.3))
+                                Text("Load a ticker and press Calculate")
+                                    .font(.title2).foregroundColor(.secondary.opacity(0.5))
+                                VStack(spacing: 4) {
+                                    HStack(spacing: 16) {
+                                        shortcutBadge("⌘↩", "Calculate")
+                                        shortcutBadge("⌘⌫", "Clear")
+                                        shortcutBadge("⌘E", "Export")
+                                    }
+                                    HStack(spacing: 16) {
+                                        shortcutBadge("⌘H", "History")
+                                        shortcutBadge("⌘D", "Compare")
+                                        shortcutBadge("⌘\\", "Sidebar")
+                                    }
+                                }.padding(.top, 4)
+                                Spacer()
+                            }.frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        .frame(maxWidth: .infinity).padding(.horizontal, 20)
-                    } else {
-                        VStack {
-                            Spacer()
-                            Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 60)).foregroundColor(.secondary.opacity(0.3))
-                            Text("Load a ticker and press Calculate").font(.title2).foregroundColor(.secondary.opacity(0.5)).padding(.top)
-                            Spacer()
-                        }.frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
+
+                    // STATUS BAR
+                    StatusBarView(
+                        ticker: ticker, stockName: stockName,
+                        lastFetchDate: lastFetchDate, isLoading: isLoading,
+                        hasCalculated: hasCalculated, intrinsicValue: intrinsicValue,
+                        currentPrice: currentPrice, currencySymbol: currencySymbol,
+                        historyCount: analysisHistory.count,
+                        compareCount: compareSnapshots.count,
+                        onShowCompare: { showCompareSheet = true }
+                    )
                 }
 
                 if !isSidebarVisible {
@@ -1012,8 +1091,34 @@ struct ContentView: View {
                 }
             }
         }
+        // KEYBOARD SHORTCUTS
+        .background(Group {
+            Button("") { clearAllData() }.keyboardShortcut(.delete, modifiers: .command).opacity(0)
+            Button("") { if hasCalculated { showShareSheet = true } }.keyboardShortcut("e", modifiers: .command).opacity(0)
+            Button("") { showHistorySheet = true }.keyboardShortcut("h", modifiers: .command).opacity(0)
+            Button("") { withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { isSidebarVisible.toggle() } }.keyboardShortcut("\\", modifiers: .command).opacity(0)
+            Button("") { if hasCalculated { addToCompare() } }.keyboardShortcut("d", modifiers: .command).opacity(0)
+            Button("") { if hasCalculated && !userGeminiKey.isEmpty { generateAIAnalysis() } }.keyboardShortcut("a", modifiers: [.command, .shift]).opacity(0)
+            Button("") { if compareSnapshots.count >= 1 { showCompareSheet = true } }.keyboardShortcut("c", modifiers: [.command, .shift]).opacity(0)
+        })
+        .sheet(isPresented: $showCompareSheet) {
+            CompareSheet(snapshots: compareSnapshots, onRemove: { id in compareSnapshots.removeAll { $0.id == id } })
+        }
+        .onAppear {
+            projectionYears = defaultProjectionYears
+            loadHistory()
+        }
     }
 
+    // Helper for shortcut badges in empty state
+    func shortcutBadge(_ key: String, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Text(key).font(.system(size: 10, weight: .medium, design: .monospaced))
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(Color.gray.opacity(0.15)).cornerRadius(4)
+            Text(label).font(.caption2).foregroundColor(.secondary)
+        }
+    }
     // --- LOGIC ---
     func clearAllData() {
         withAnimation {
@@ -1052,6 +1157,7 @@ struct ContentView: View {
                     if let cagr = data.fcfCagr { self.fcfCagrDisplay = String(format: "%.1f%%", cagr) } else { self.fcfCagrDisplay = nil }
                     
                     self.isLoading = false
+                    self.lastFetchDate = Date()
                 }
             } else {
                 await MainActor.run { self.isLoading = false; self.priceDisplay = "Error" }
@@ -1093,45 +1199,44 @@ struct ContentView: View {
     }
 
     func calculateIntrinsicValue() {
-        let baseVal = computeDCF(
-            fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput),
-            cash: parseDouble(cashInput), debt: parseDouble(debtInput),
-            g: growthRate, r: discountRate, exitMult: exitMultiple
-        )
-        let bearVal = computeDCF(
-            fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput),
-            cash: parseDouble(cashInput), debt: parseDouble(debtInput),
-            g: growthRate * 0.7, r: discountRate, exitMult: exitMultiple * 0.7
-        )
-        let bullVal = computeDCF(
-            fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput),
-            cash: parseDouble(cashInput), debt: parseDouble(debtInput),
-            g: growthRate * 1.3, r: discountRate, exitMult: exitMultiple * 1.3
-        )
-        
+        let years = max(3, min(projectionYears, 10))
+        let baseVal = computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: growthRate, r: discountRate, exitMult: exitMultiple, years: years)
+        let bearVal = computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: growthRate * 0.7, r: discountRate, exitMult: exitMultiple * 0.7, years: years)
+        let bullVal = computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: growthRate * 1.3, r: discountRate, exitMult: exitMultiple * 1.3, years: years)
+
         let newScenarios = [
             ScenarioResult(name: "Bear (-30%)", value: bearVal, color: .red),
             ScenarioResult(name: "Base", value: baseVal, color: .blue),
             ScenarioResult(name: "Bull (+30%)", value: bullVal, color: .green)
         ]
-        
+
         if currentPrice > 0 { self.marketImpliedGrowth = solveReverseDCF(targetPrice: currentPrice) }
         var newProjections: [ProjectionPoint] = []
         var projectedValue = baseVal
         newProjections.append(ProjectionPoint(year: 0, value: baseVal))
-        for i in 1...5 {
-            projectedValue = projectedValue * (1 + (growthRate / 100.0))
+        for i in 1...years {
+            projectedValue *= (1 + growthRate / 100.0)
             newProjections.append(ProjectionPoint(year: i, value: projectedValue))
         }
-        
+
         runMonteCarlo()
-        
+
         withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
             self.intrinsicValue = baseVal
             self.scenarioResults = newScenarios
             self.projectionData = newProjections
             self.hasCalculated = true
         }
+
+        // Save to history
+        let entry = AnalysisHistoryEntry(
+            date: Date(), ticker: ticker.uppercased(), stockName: stockName,
+            currentPrice: currentPrice, intrinsicValue: baseVal,
+            growthRate: growthRate, discountRate: discountRate,
+            exitMultiple: exitMultiple, currencySymbol: currencySymbol,
+            fcfCagrDisplay: fcfCagrDisplay
+        )
+        saveToHistory(entry)
     }
     
     func runMonteCarlo() {
@@ -1169,14 +1274,15 @@ struct ContentView: View {
         return (low + high) / 2.0 * 100.0
     }
 
-    func runSimulationWithGrowth(_ g: Double) -> Double { return computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: g, r: discountRate, exitMult: exitMultiple) }
-    func runSimulation(g: Double, r: Double) -> Double { return computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: g, r: r, exitMult: exitMultiple) }
-    func computeDCF(fcfPerShare: Double, shares: Double, cash: Double, debt: Double, g: Double, r: Double, exitMult: Double) -> Double {
+    func runSimulationWithGrowth(_ g: Double) -> Double { return computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: g, r: discountRate, exitMult: exitMultiple, years: projectionYears) }
+    func runSimulation(g: Double, r: Double) -> Double { return computeDCF(fcfPerShare: parseDouble(fcfInput), shares: parseDouble(sharesInput), cash: parseDouble(cashInput), debt: parseDouble(debtInput), g: g, r: r, exitMult: exitMultiple, years: projectionYears) }
+    func computeDCF(fcfPerShare: Double, shares: Double, cash: Double, debt: Double, g: Double, r: Double, exitMult: Double, years: Int = 5) -> Double {
         let gDec = g / 100.0; let rDec = r / 100.0; var currentFCF = fcfPerShare; var sumPV = 0.0
-        for i in 1...5 { currentFCF = currentFCF * (1 + gDec); sumPV += (currentFCF / pow(1 + rDec, Double(i))) }
+        let n = max(1, years)
+        for i in 1...n { currentFCF = currentFCF * (1 + gDec); sumPV += (currentFCF / pow(1 + rDec, Double(i))) }
         let terminalValue = currentFCF * exitMult
         let netCashPerShare = shares > 0 ? (cash - debt) / shares : 0.0
-        return sumPV + (terminalValue / pow(1 + rDec, 5.0)) + netCashPerShare
+        return sumPV + (terminalValue / pow(1 + rDec, Double(n))) + netCashPerShare
     }
     func getCurrencySymbol(code: String) -> String { switch code { case "EUR": return "€"; case "GBP": return "£"; case "JPY": return "¥"; case "CNY": return "¥"; case "INR": return "₹"; case "CAD": return "C$"; case "AUD": return "A$"; default: return "$" } }
     func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View { HStack { Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8); InfoButton(helpText: helpText); Spacer(); TextField("0", text: value).textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing) } }
@@ -1227,7 +1333,7 @@ struct ContentView: View {
         let key = userGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             do {
-                let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=\(key)")!
+                let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(key)")!
                 var req = URLRequest(url: url)
                 req.httpMethod = "POST"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1273,6 +1379,55 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // MARK: - History
+    func saveToHistory(_ entry: AnalysisHistoryEntry) {
+        analysisHistory.removeAll { $0.ticker == entry.ticker }
+        analysisHistory.insert(entry, at: 0)
+        if analysisHistory.count > 50 { analysisHistory = Array(analysisHistory.prefix(50)) }
+        if let encoded = try? JSONEncoder().encode(analysisHistory) {
+            UserDefaults.standard.set(encoded, forKey: "analysisHistory")
+        }
+    }
+
+    func loadHistory() {
+        if let data = UserDefaults.standard.data(forKey: "analysisHistory"),
+           let decoded = try? JSONDecoder().decode([AnalysisHistoryEntry].self, from: data) {
+            analysisHistory = decoded
+        }
+        projectionYears = defaultProjectionYears
+    }
+
+    func loadFromHistory(_ entry: AnalysisHistoryEntry) {
+        ticker = entry.ticker
+        stockName = entry.stockName
+        currentPrice = entry.currentPrice
+        intrinsicValue = entry.intrinsicValue
+        priceDisplay = String(format: "%.2f %@", entry.currentPrice, entry.currencySymbol)
+        currencySymbol = entry.currencySymbol
+        growthRate = entry.growthRate
+        discountRate = entry.discountRate
+        exitMultiple = entry.exitMultiple
+        fcfCagrDisplay = entry.fcfCagrDisplay
+        showHistorySheet = false
+    }
+
+    // MARK: - Compare
+    func addToCompare() {
+        guard hasCalculated else { return }
+        let snap = CompareSnapshot(
+            ticker: ticker.uppercased(), stockName: stockName,
+            currentPrice: currentPrice, intrinsicValue: intrinsicValue,
+            growthRate: growthRate, discountRate: discountRate, exitMultiple: exitMultiple,
+            fcfInput: fcfInput, cashInput: cashInput, debtInput: debtInput,
+            currentPEInput: currentPEInput, currencySymbol: currencySymbol,
+            betaInput: betaInput, fcfCagrDisplay: fcfCagrDisplay,
+            scenarioResults: scenarioResults, projectionYears: projectionYears
+        )
+        compareSnapshots.removeAll { $0.ticker == snap.ticker }
+        compareSnapshots.append(snap)
+        if compareSnapshots.count >= 2 { showCompareSheet = true }
     }
 
     @MainActor
@@ -2029,7 +2184,7 @@ struct PDFExportView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Intrinsic Value").font(.caption2).foregroundColor(.secondary)
                         Text(String(format: "%.2f %@", intrinsicValue, currencySymbol)).font(.system(size: 16, weight: .bold)).foregroundColor(intrinsicValue > currentPrice ? .green : .red)
-                        let upPct = currentPrice > 0 ? ((intrinsicValue - currentPrice) / currentPrice) * 100 : 0
+                        let upPct = currentPrice > 0 ? ((intrinsicValue - currentPrice) / intrinsicValue) * 100 : 0
                         Text(String(format: "%@ %.1f%%", upPct >= 0 ? "▲" : "▼", abs(upPct)))
                             .font(.caption2).bold().foregroundColor(upPct >= 0 ? .green : .red)
                     }.padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Color.gray.opacity(0.08)).cornerRadius(8)
@@ -2693,7 +2848,340 @@ struct AIAnalysisSheet: View {
     }
 }
 
+// MARK: - STATUS BAR
+struct StatusBarView: View {
+    let ticker: String; let stockName: String; let lastFetchDate: Date?
+    let isLoading: Bool; let hasCalculated: Bool
+    let intrinsicValue: Double; let currentPrice: Double; let currencySymbol: String
+    let historyCount: Int; let compareCount: Int
+    let onShowCompare: () -> Void
+
+    var mosText: String? {
+        guard hasCalculated, currentPrice > 0, intrinsicValue > 0 else { return nil }
+        let pct = ((intrinsicValue - currentPrice) / intrinsicValue) * 100
+        return String(format: "%@%.1f%% MoS", pct >= 0 ? "▲" : "▼", abs(pct))
+    }
+    var mosColor: Color {
+        guard hasCalculated, currentPrice > 0, intrinsicValue > 0 else { return .secondary }
+        return ((intrinsicValue - currentPrice) / intrinsicValue) * 100 >= 0 ? .green : .red
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Ticker badge
+            if !ticker.isEmpty {
+                HStack(spacing: 4) {
+                    Circle().fill(isLoading ? Color.orange : Color.green).frame(width: 6, height: 6)
+                    Text(ticker.uppercased()).font(.caption2).bold().foregroundColor(.primary)
+                    if !stockName.isEmpty { Text("· \(stockName)").font(.caption2).foregroundColor(.secondary).lineLimit(1) }
+                }
+            } else {
+                Text("No ticker loaded").font(.caption2).foregroundColor(.secondary)
+            }
+
+            Divider().frame(height: 12)
+
+            // MoS
+            if let mos = mosText {
+                Text(mos).font(.caption2).bold().foregroundColor(mosColor)
+                Divider().frame(height: 12)
+            }
+
+            // Last fetch
+            if let date = lastFetchDate {
+                Image(systemName: "clock").font(.caption2).foregroundColor(.secondary)
+                Text(date.formatted(.relative(presentation: .named))).font(.caption2).foregroundColor(.secondary)
+                Divider().frame(height: 12)
+            }
+
+            Spacer()
+
+            // History count
+            if historyCount > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "clock.arrow.circlepath").font(.caption2).foregroundColor(.secondary)
+                    Text("\(historyCount)").font(.caption2).foregroundColor(.secondary)
+                }
+            }
+
+            // Compare badge
+            if compareCount > 0 {
+                Button(action: onShowCompare) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.left.arrow.right").font(.caption2)
+                        Text("\(compareCount) in compare").font(.caption2).bold()
+                    }
+                    .foregroundColor(.teal)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.teal.opacity(0.1)).cornerRadius(4)
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 5)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.95))
+        .overlay(Divider(), alignment: .top)
+    }
+}
+
+// MARK: - SHARE EXPORT SHEET
+struct ShareExportSheet: View {
+    let ticker: String
+    let onExportPDF: () -> Void
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "square.and.arrow.up").foregroundColor(.blue).font(.title2)
+                Text("Share & Export").font(.headline)
+                Spacer()
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.title2)
+                }.buttonStyle(.plain)
+            }.padding()
+
+            Divider()
+
+            VStack(spacing: 12) {
+                shareRow(icon: "doc.richtext.fill", color: .red, title: "Export as PDF", subtitle: "Save a full analysis report to disk") {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { onExportPDF() }
+                }
+
+                shareRow(icon: "doc.on.clipboard", color: .blue, title: "Copy Summary to Clipboard", subtitle: "Copy ticker, fair value and MoS as plain text") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString("Intrinsic Analysis: \(ticker)", forType: .string)
+                    dismiss()
+                }
+
+                shareRow(icon: "envelope.fill", color: .green, title: "Share via Mail", subtitle: "Open Mail with analysis summary") {
+                    if let url = URL(string: "mailto:?subject=Intrinsic%20Analysis%20\(ticker)&body=Analysis%20for%20\(ticker)") {
+                        NSWorkspace.shared.open(url)
+                    }
+                    dismiss()
+                }
+            }.padding()
+
+            Spacer()
+        }.frame(width: 380, height: 300)
+    }
+
+    func shareRow(icon: String, color: Color, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon).font(.title2).foregroundColor(color)
+                    .frame(width: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.subheadline).bold()
+                    Text(subtitle).font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundColor(.secondary).font(.caption)
+            }
+            .padding(12)
+            .background(Color.gray.opacity(0.06)).cornerRadius(10)
+        }.buttonStyle(.plain)
+    }
+}
+
+// MARK: - HISTORY LOG SHEET
+struct HistoryLogSheet: View {
+    @Binding var history: [AnalysisHistoryEntry]
+    let onLoad: (AnalysisHistoryEntry) -> Void
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath").foregroundColor(.blue).font(.title2)
+                Text("Analysis History").font(.headline)
+                Spacer()
+                if !history.isEmpty {
+                    Button("Clear All") {
+                        history.removeAll()
+                        UserDefaults.standard.removeObject(forKey: "analysisHistory")
+                    }.foregroundColor(.red).font(.caption)
+                }
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.title2)
+                }.buttonStyle(.plain).padding(.leading, 8)
+            }.padding()
+
+            Divider()
+
+            if history.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "clock").font(.system(size: 40)).foregroundColor(.secondary.opacity(0.3))
+                    Text("No analyses yet").foregroundColor(.secondary)
+                    Text("Calculate a valuation to save it here automatically.").font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
+                    Spacer()
+                }
+            } else {
+                List {
+                    ForEach(history) { entry in
+                        Button(action: { onLoad(entry) }) {
+                            HStack(spacing: 12) {
+                                // Color badge
+                                VStack {
+                                    Text(entry.ticker).font(.system(size: 13, weight: .black))
+                                    Text(entry.currencySymbol).font(.caption2)
+                                }
+                                .foregroundColor(.white)
+                                .frame(width: 48, height: 48)
+                                .background(entry.mosPercent >= 0 ? Color.green.gradient : Color.red.gradient)
+                                .cornerRadius(10)
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text(entry.stockName.isEmpty ? entry.ticker : entry.stockName)
+                                            .font(.subheadline).bold().lineLimit(1)
+                                        Spacer()
+                                        Text(entry.date.formatted(.dateTime.month().day().hour().minute()))
+                                            .font(.caption2).foregroundColor(.secondary)
+                                    }
+                                    HStack(spacing: 8) {
+                                        Text(String(format: "Price: %.2f", entry.currentPrice)).font(.caption2).foregroundColor(.secondary)
+                                        Text("→").font(.caption2).foregroundColor(.secondary)
+                                        Text(String(format: "IV: %.2f", entry.intrinsicValue)).font(.caption2).bold()
+                                            .foregroundColor(entry.mosPercent >= 0 ? .green : .red)
+                                    }
+                                    HStack(spacing: 6) {
+                                        Text(String(format: "G: %.1f%%", entry.growthRate)).font(.caption2).foregroundColor(.secondary)
+                                        Text(String(format: "R: %.1f%%", entry.discountRate)).font(.caption2).foregroundColor(.secondary)
+                                        Text(String(format: "%.1fx", entry.exitMultiple)).font(.caption2).foregroundColor(.secondary)
+                                        Spacer()
+                                        Text(String(format: "%@%.1f%%", entry.mosPercent >= 0 ? "▲" : "▼", abs(entry.mosPercent)))
+                                            .font(.caption2).bold()
+                                            .foregroundColor(entry.mosPercent >= 0 ? .green : .red)
+                                            .padding(.horizontal, 5).padding(.vertical, 1)
+                                            .background((entry.mosPercent >= 0 ? Color.green : Color.red).opacity(0.1))
+                                            .cornerRadius(4)
+                                    }
+                                }
+                                Image(systemName: "arrow.up.left.circle").foregroundColor(.blue).font(.caption)
+                            }
+                            .padding(.vertical, 4)
+                        }.buttonStyle(.plain)
+                    }
+                    .onDelete { indexSet in history.remove(atOffsets: indexSet) }
+                }
+            }
+        }
+        .frame(width: 520, height: 480)
+    }
+}
+
+// MARK: - COMPARE SHEET
+struct CompareSheet: View {
+    let snapshots: [CompareSnapshot]
+    let onRemove: (UUID) -> Void
+    @Environment(\.dismiss) var dismiss
+
+    let rows: [(label: String, value: (CompareSnapshot) -> String, highlight: Bool)] = [
+        ("Current Price",    { s in String(format: "%.2f %@", s.currentPrice, s.currencySymbol) }, false),
+        ("Intrinsic Value",  { s in String(format: "%.2f %@", s.intrinsicValue, s.currencySymbol) }, true),
+        ("Margin of Safety", { s in String(format: "%.1f%%", s.mosPercent) }, true),
+        ("Growth Rate",      { s in String(format: "%.1f%%", s.growthRate) }, false),
+        ("Discount Rate",    { s in String(format: "%.1f%%", s.discountRate) }, false),
+        ("Exit Multiple",    { s in String(format: "%.1fx", s.exitMultiple) }, false),
+        ("FCF / Share",      { s in s.fcfInput }, false),
+        ("P/E Current",      { s in s.currentPEInput }, false),
+        ("Beta",             { s in s.betaInput.map { String(format: "%.2f", $0) } ?? "—" }, false),
+        ("5Y FCF CAGR",      { s in s.fcfCagrDisplay ?? "—" }, false),
+        ("Proj. Years",      { s in "\(s.projectionYears)Y" }, false),
+    ]
+
+    func bestIndex(for rowIdx: Int) -> Int? {
+        guard rows[rowIdx].highlight else { return nil }
+        let label = rows[rowIdx].label
+        if label == "Margin of Safety" || label == "Intrinsic Value" {
+            let vals = snapshots.map { Double($0.mosPercent) }
+            return vals.firstIndex(of: vals.max() ?? -999)
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Image(systemName: "arrow.left.arrow.right").foregroundColor(.teal).font(.title2)
+                Text("Compare Mode").font(.headline)
+                Spacer()
+                Text("\(snapshots.count) stocks").font(.caption).foregroundColor(.secondary)
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary).font(.title2)
+                }.buttonStyle(.plain).padding(.leading, 8)
+            }.padding()
+
+            Divider()
+
+            if snapshots.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "arrow.left.arrow.right").font(.system(size: 40)).foregroundColor(.secondary.opacity(0.3))
+                    Text("No stocks added yet").foregroundColor(.secondary)
+                    Text("Press ⌘D on any calculated stock to add it here.").font(.caption).foregroundColor(.secondary)
+                    Spacer()
+                }
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Ticker header row
+                        HStack(spacing: 0) {
+                            Text("Metric").font(.caption2).bold().foregroundColor(.secondary)
+                                .frame(width: 130, alignment: .leading).padding(.leading, 12)
+                            ForEach(snapshots) { snap in
+                                VStack(spacing: 3) {
+                                    Text(snap.ticker).font(.system(size: 13, weight: .black))
+                                    Text(snap.stockName).font(.system(size: 8)).foregroundColor(.secondary).lineLimit(1)
+                                    Button(action: { onRemove(snap.id) }) {
+                                        Image(systemName: "xmark.circle.fill").font(.caption2).foregroundColor(.red.opacity(0.7))
+                                    }.buttonStyle(.plain)
+                                }
+                                .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                .background(snap.mosPercent >= 0 ? Color.green.opacity(0.08) : Color.red.opacity(0.08))
+                            }
+                        }
+                        .background(Color.gray.opacity(0.08))
+
+                        Divider()
+
+                        ForEach(rows.indices, id: \.self) { rowIdx in
+                            let row = rows[rowIdx]
+                            let best = bestIndex(for: rowIdx)
+                            HStack(spacing: 0) {
+                                Text(row.label).font(.caption2).foregroundColor(.secondary)
+                                    .frame(width: 130, alignment: .leading).padding(.leading, 12)
+                                ForEach(snapshots.indices, id: \.self) { si in
+                                    let val = row.value(snapshots[si])
+                                    let isBest = best == si
+                                    Text(val)
+                                        .font(.system(size: 12, weight: isBest ? .bold : .regular))
+                                        .foregroundColor(isBest ? .green : .primary)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 7)
+                                        .background(isBest ? Color.green.opacity(0.08) : Color.clear)
+                                }
+                            }
+                            .background(rowIdx % 2 == 0 ? Color.clear : Color.gray.opacity(0.04))
+                            Divider().opacity(0.5)
+                        }
+                    }
+                }
+            }
+            Divider()
+            HStack {
+                Text("⌘D to add current stock · Click ✕ to remove").font(.caption2).foregroundColor(.secondary)
+                Spacer()
+                Button("Close") { dismiss() }.buttonStyle(.bordered)
+            }.padding(10)
+        }
+        .frame(width: min(CGFloat(160 + snapshots.count * 160), 900), height: 560)
+    }
+}
+
 // MARK: - UTILS
 extension Font { static let tiny = Font.system(size: 10) }
 extension Text { func secondaryStr() -> Text { self.foregroundColor(.secondary) } }
-
