@@ -964,6 +964,16 @@ struct ContentView: View {
                                         .padding(.horizontal)
                                         .transition(.opacity).animation(.easeOut(duration: 0.4).delay(0.2), value: hasCalculated)
                                 }
+                                
+                                if parseDouble(currentPEInput) > 0 && parseDouble(historicalPEInput) > 0 {
+                                    HistoricalPEValuationView(
+                                        currentPrice: currentPrice,
+                                        currentPE: parseDouble(currentPEInput),
+                                        historicalPE: parseDouble(historicalPEInput),
+                                        symbol: currencySymbol
+                                    )
+                                    .padding(.horizontal)
+                                }
 
                                 if !projectionData.isEmpty {
                                     ProjectedGrowthChart(data: projectionData, currentPrice: currentPrice, symbol: currencySymbol)
@@ -3185,3 +3195,49 @@ struct CompareSheet: View {
 // MARK: - UTILS
 extension Font { static let tiny = Font.system(size: 10) }
 extension Text { func secondaryStr() -> Text { self.foregroundColor(.secondary) } }
+
+// MARK: - HISTORICAL P/E VALUATION
+struct HistoricalPEValuationView: View {
+    let currentPrice: Double
+    let currentPE: Double
+    let historicalPE: Double
+    let symbol: String
+    
+    var eps: Double { currentPE > 0 ? currentPrice / currentPE : 0 }
+    var histPEValue: Double { eps * historicalPE }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "clock.fill").foregroundColor(.teal)
+                Text("Historical P/E Fair Value").font(.headline).foregroundColor(.secondary)
+                Spacer()
+            }
+            
+            if eps > 0 && historicalPE > 0 {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(String(format: "%.2f %@", histPEValue, symbol))
+                        .font(.title2).bold()
+                        .foregroundColor(histPEValue > currentPrice ? .green : .red)
+                    
+                    if currentPrice > 0 {
+                        let diff = ((histPEValue - currentPrice) / currentPrice) * 100
+                        Text(String(format: "(%@%.1f%%)", diff >= 0 ? "+" : "", diff))
+                            .font(.caption).bold()
+                            .foregroundColor(diff >= 0 ? .green : .red)
+                    }
+                }
+                Text("If trading at historical 5Y P/E (\(String(format: "%.1f", historicalPE))x) with implied EPS of \(String(format: "%.2f", eps))")
+                    .font(.caption).foregroundColor(.secondary)
+            } else {
+                Text("Requires valid Current P/E and Historical P/E inputs > 0")
+                    .font(.caption).foregroundColor(.secondary).italic()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.teal.opacity(0.2), lineWidth: 1))
+    }
+}
