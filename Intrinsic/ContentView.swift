@@ -698,8 +698,8 @@ struct ContentView: View {
     @State private var logoUrl: String?
     @State private var isADR: Bool = false
 
-    @State private var sidebarWidth: CGFloat = 320
-    @State private var lastSidebarWidth: CGFloat = 320
+    @State private var sidebarWidth: CGFloat = 360
+    @State private var lastSidebarWidth: CGFloat = 360
 
     @State private var fcfInput: String = "0.00"
     @State private var sharesInput: String = "0.00"
@@ -1295,7 +1295,7 @@ struct ContentView: View {
         return sumPV + (terminalValue / pow(1 + rDec, Double(n))) + netCashPerShare
     }
     func getCurrencySymbol(code: String) -> String { switch code { case "EUR": return "€"; case "GBP": return "£"; case "JPY": return "¥"; case "CNY": return "¥"; case "INR": return "₹"; case "CAD": return "C$"; case "AUD": return "A$"; default: return "$" } }
-    func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View { HStack { Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8); InfoButton(helpText: helpText); Spacer(); TextField("0", text: value).textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing) } }
+    func inputRowString(label: String, value: Binding<String>, helpText: String) -> some View { HStack { Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8); InfoButton(helpText: helpText); Spacer(); TextField("", text: value).textFieldStyle(.roundedBorder).frame(width: 100).multilineTextAlignment(.trailing) } }
     func inputRowDouble(label: String, value: Binding<Double>, suffix: String, helpText: String) -> some View { HStack { Text(label).help(helpText).lineLimit(1).minimumScaleFactor(0.8); InfoButton(helpText: helpText); Spacer(); HStack(spacing: 2) { TextField("", value: value, format: .number).textFieldStyle(.roundedBorder).frame(width: 80).multilineTextAlignment(.trailing); Text(suffix).font(.caption).foregroundColor(.secondary) } } }
 
     func generateAIAnalysis() {
@@ -1343,7 +1343,7 @@ struct ContentView: View {
         let key = userGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             do {
-                let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=\(key)")!
+                let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=\(key)")!
                 var req = URLRequest(url: url)
                 req.httpMethod = "POST"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -3098,7 +3098,7 @@ struct CompareSheet: View {
         ("FCF / Share",      { s in s.fcfInput }, false),
         ("P/E Current",      { s in s.currentPEInput }, false),
         ("Beta",             { s in s.betaInput.map { String(format: "%.2f", $0) } ?? "—" }, false),
-        ("5Y FCF CAGR",      { s in s.fcfCagrDisplay ?? "—" }, false),
+        //("5Y FCF CAGR",      { s in s.fcfCagrDisplay ?? "—" }, false),
         ("Proj. Years",      { s in "\(s.projectionYears)Y" }, false),
     ]
 
