@@ -9,14 +9,15 @@
     
     <style>
         :root {
-            --bg-color: #0a0a0c;
-            --text-main: #ffffff;
+            --bg-color: #050505; /* Plus profond */
+            --text-main: #f4f4f5;
             --text-muted: #a1a1aa;
             --accent: #3b82f6;
-            --accent-green: #22c55e;
+            --accent-green: #10b981;
             --accent-red: #ef4444;
-            --accent-glow: rgba(59, 130, 246, 0.5);
-            --card-bg: #18181b;
+            --accent-glow: rgba(59, 130, 246, 0.25);
+            --card-bg: #111113; /* Meilleur contraste */
+            --card-border: #27272a;
             --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
 
@@ -28,11 +29,12 @@
             font-family: var(--font-family);
             line-height: 1.6;
             overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
         }
 
         /* --- TYPOGRAPHY --- */
-        h1, h2, h3 { letter-spacing: -0.02em; font-weight: 700; }
-        h1 { font-size: 3.5rem; line-height: 1.1; margin-bottom: 1.5rem; }
+        h1, h2, h3, h4 { letter-spacing: -0.02em; font-weight: 700; }
+        h1 { font-size: 4rem; line-height: 1.1; margin-bottom: 1.5rem; }
         h2 { font-size: 2.5rem; margin-bottom: 1rem; }
         p { color: var(--text-muted); font-size: 1.125rem; max-width: 600px; margin: 0 auto; }
 
@@ -40,235 +42,95 @@
         .container { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
         
         /* --- HEADER --- */
-        header {
-            padding: 2rem 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .logo { 
-            display: flex; 
-            align-items: center; 
-            gap: 15px; /* Espace entre le logo et le texte */
-        }
-
-        .logo-img {
-            width: 42px;
-            height: 42px;
-            border-radius: 10px; /* Arrondi style Apple */
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        }
-
-        .logo-text { 
-            font-size: 1.5rem; 
-            font-weight: 800; 
-            background: linear-gradient(to right, #fff, #aaa); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent; 
-        }
+        header { padding: 2rem 0; display: flex; justify-content: space-between; align-items: center; }
+        .logo { display: flex; align-items: center; gap: 15px; }
+        .logo-img { width: 42px; height: 42px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        .logo-text { font-size: 1.5rem; font-weight: 800; background: linear-gradient(to right, #fff, #aaa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         
         /* --- HERO SECTION --- */
-        .hero {
-            text-align: center;
-            padding: 8rem 0 4rem;
-            position: relative;
-        }
-        
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
-            z-index: -1;
-            opacity: 0.6;
-        }
+        .hero { text-align: center; padding: 6rem 0 4rem; position: relative; }
+        .hero::before { content: ''; position: absolute; top: -30%; left: 50%; transform: translateX(-50%); width: 800px; height: 800px; background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%); z-index: -1; opacity: 0.6; }
 
-        .btn {
-            display: inline-block;
-            background-color: var(--text-main);
-            color: #000;
-            padding: 0.8rem 2rem;
-            border-radius: 50px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 2rem;
-        }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(255,255,255,0.2);
-        }
-        .btn-secondary {
-            background: transparent;
-            color: var(--text-main);
-            border: 1px solid #333;
-            margin-left: 1rem;
-        }
-        .btn-secondary:hover {
-            background: #333;
-            box-shadow: none;
-        }
-        /* --- V2.0 NEW SECTION --- */
-        .v2-update {
-            padding: 4rem 0;
-            background: linear-gradient(180deg, rgba(59, 130, 246, 0.05) 0%, rgba(0,0,0,0) 100%);
-            border-top: 1px solid #27272a;
-            border-bottom: 1px solid #27272a;
-            margin-top: 4rem;
-        }
-        .v2-badge {
-            background: var(--accent);
-            color: white;
-            font-size: 0.75rem;
-            font-weight: 800;
-            padding: 0.2rem 0.6rem;
-            border-radius: 4px;
-            text-transform: uppercase;
-            margin-bottom: 1rem;
-            display: inline-block;
-        }
-        .v2-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-        .v2-item {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            text-align: left;
-        }
-        .v2-item h4 { font-size: 1.1rem; color: #fff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 10px; }
-        .v2-item p { margin: 0; font-size: 0.95rem; line-height: 1.5; color: #888; }
-        .v2-icon { color: var(--accent); font-size: 1.2rem; }
+        .btn { display: inline-block; background-color: var(--text-main); color: #000; padding: 0.8rem 2.5rem; border-radius: 50px; text-decoration: none; font-weight: 600; font-size: 1.1rem; transition: transform 0.2s, box-shadow 0.2s; margin-top: 2rem; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(255,255,255,0.25); }
+        .btn-secondary { background: transparent; color: var(--text-main); border: 1px solid #333; margin-left: 1rem; }
+        .btn-secondary:hover { background: #333; box-shadow: none; }
 
-        /* --- CAROUSEL --- */
-        .app-preview {
-            margin-top: 4rem;
-            position: relative;
-            border-radius: 12px;
-            box-shadow: 0 20px 50px -10px rgba(0,0,0,0.5);
-            border: 1px solid #333;
-            overflow: hidden;
-            background: #1c1c1e;
-            max-width: 1000px; 
-            margin-left: auto;
-            margin-right: auto;
-            aspect-ratio: 16/10;
-        }
+        /* --- VIDEO DEMO --- */
+        .video-container { margin-top: 4rem; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 60px -15px rgba(0,0,0,0.7); border: 1px solid #333; max-width: 1000px; margin-left: auto; margin-right: auto; background: #000; }
+        .video-container video { width: 100%; height: auto; display: block; }
 
-        .carousel-track {
-            display: flex;
-            transition: transform 0.5s ease-in-out;
-            height: 100%;
-        }
+        /* --- STEPS --- */
+        .steps-section { padding: 6rem 0; background: #0c0c0e; border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border); }
+        .steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; margin-top: 4rem; }
+        .step-card { text-align: left; position: relative; }
+        .step-number { font-size: 4rem; font-weight: 900; color: rgba(255,255,255,0.05); position: absolute; top: -40px; left: -15px; z-index: 0; }
+        .step-card h4 { font-size: 1.2rem; margin-bottom: 0.5rem; position: relative; z-index: 1; color: var(--text-main); }
+        .step-card p { font-size: 1rem; margin: 0; position: relative; z-index: 1; color: var(--text-muted); }
 
-        .carousel-slide { min-width: 100%; height: 100%; }
-        .carousel-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-        .carousel-btn {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(0, 0, 0, 0.5);
-            color: white;
-            border: none;
-            padding: 1rem;
-            cursor: pointer;
-            z-index: 10;
-            font-size: 1.2rem;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.3s;
-        }
-        .carousel-btn:hover { background: rgba(59, 130, 246, 0.8); }
-        .carousel-btn.prev { left: 20px; }
-        .carousel-btn.next { right: 20px; }
-
-        /* --- FEATURES --- */
-        .features { padding: 6rem 0; }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 2rem;
-            margin-top: 3rem;
-        }
-        .card {
-            background: var(--card-bg);
-            padding: 2rem;
-            border-radius: 16px;
-            border: 1px solid #27272a;
-            transition: all 0.3s ease;
-        }
-        .card:hover { border-color: var(--accent); transform: translateY(-5px); }
-        .icon {
-            width: 48px;
-            height: 48px;
-            background: rgba(59, 130, 246, 0.1);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--accent);
-            margin-bottom: 1.5rem;
-            font-size: 1.5rem;
-        }
-        .card.green-accent:hover { border-color: var(--accent-green); }
-        .card.green-accent .icon { color: var(--accent-green); background: rgba(34, 197, 94, 0.1); }
-        .card h3 { font-size: 1.25rem; margin-bottom: 0.5rem; color: var(--text-main); }
+        /* --- FEATURES (Refonte Design) --- */
+        .features { padding: 8rem 0; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 4rem; }
+        .card { background: var(--card-bg); padding: 2.5rem; border-radius: 20px; border: 1px solid var(--card-border); transition: all 0.3s ease; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .card:hover { border-color: rgba(59, 130, 246, 0.5); transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+        .icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: flex-start; color: var(--accent); margin-bottom: 1.5rem; font-size: 1.5rem; }
+        .card h3 { font-size: 1.3rem; margin-bottom: 0.8rem; color: var(--text-main); }
         .card p { margin: 0; font-size: 1rem; max-width: 100%; color: var(--text-muted); }
 
-        /* --- COMPARISON --- */
-        .comparison { padding: 6rem 0; background: #121214; border-top: 1px solid #27272a; border-bottom: 1px solid #27272a; }
-        .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
-        .comparison-col h3 { font-size: 1.8rem; margin-bottom: 2rem; }
-        .comparison-col.bad h3 { color: var(--accent-red); }
-        .comparison-col.good h3 { color: var(--accent-green); }
-        .comparison-list { list-style: none; }
-        .comparison-list li { margin-bottom: 1.5rem; font-size: 1.1rem; color: var(--text-muted); display: flex; align-items: center; gap: 15px; }
-        .comparison-col.bad i { color: var(--accent-red); font-size: 1.2rem; min-width: 25px; }
-        .comparison-col.good i { color: var(--accent-green); font-size: 1.2rem; min-width: 25px; }
+        /* --- SHOWCASE --- */
+        .showcase { padding: 4rem 0; }
+        .showcase-row { display: flex; align-items: center; gap: 4rem; margin-bottom: 8rem; }
+        .showcase-row:nth-child(even) { flex-direction: row-reverse; }
+        .showcase-text { flex: 1; }
+        .showcase-text h3 { font-size: 2.2rem; margin-bottom: 1rem; color: var(--text-main); }
+        .showcase-text p { margin: 0; font-size: 1.1rem; color: var(--text-muted); max-width: 100%; }
+        .showcase-image { flex: 1.2; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.6); border: 1px solid #333; }
+        .showcase-image img { width: 100%; height: auto; display: block; }
+
+        /* --- NEW SECTIONS (Target, Pricing, Privacy) --- */
+        .three-pillars { padding: 6rem 0; background: #0c0c0e; border-top: 1px solid var(--card-border); }
+        .pillar-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3rem; margin-top: 4rem; }
+        .pillar { text-align: left; }
+        .pillar h3 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--text-main); }
+        .pillar p { margin: 0; font-size: 1rem; color: var(--text-muted); max-width: 100%; }
+        .pillar-icon { font-size: 2rem; color: var(--accent); margin-bottom: 1.5rem; display: block; }
+
+        .pricing-section { padding: 8rem 0; text-align: center; }
+        .pricing-card { background: linear-gradient(145deg, var(--card-bg), #000); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 24px; padding: 4rem 2rem; max-width: 600px; margin: 3rem auto 0; position: relative; overflow: hidden; }
+        .pricing-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-green)); }
+        .price-tag { font-size: 4rem; font-weight: 800; color: var(--text-main); margin: 1rem 0; }
+        .price-tag span { font-size: 1.5rem; color: var(--text-muted); }
+        .pricing-list { list-style: none; margin: 2rem 0; text-align: left; display: inline-block; }
+        .pricing-list li { margin-bottom: 1rem; font-size: 1.1rem; color: var(--text-muted); }
+        .pricing-list i { color: var(--accent-green); margin-right: 10px; }
+
+        /* --- FAQ (Refonte Design) --- */
+        .faq { padding: 6rem 0; max-width: 800px; margin: 0 auto; }
+        .faq-grid { display: grid; gap: 1.5rem; margin-top: 3rem; }
+        .faq-item { background: var(--card-bg); padding: 2rem; border-radius: 16px; border: 1px solid var(--card-border); }
+        .faq-item h3 { font-size: 1.2rem; margin-bottom: 0.8rem; color: var(--text-main); }
+        .faq-item p { margin: 0; max-width: 100%; font-size: 1rem; color: var(--text-muted); }
 
         /* --- QUOTES --- */
         .quotes-section { padding: 6rem 0; text-align: center; }
         .quote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 3rem; margin-top: 3rem; }
-        .quote-card { background: rgba(255,255,255,0.03); padding: 2rem; border-radius: 16px; border: 1px solid #27272a; }
-        .quote-text { font-family: "Georgia", serif; font-size: 1.25rem; font-style: italic; color: #e4e4e7; margin-bottom: 1.5rem; }
-        .quote-author { font-weight: 700; color: var(--accent); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
-        .quote-role { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
-
-        /* --- FAQ --- */
-        .faq { padding: 6rem 0; max-width: 800px; margin: 0 auto; }
-        .faq-item { border-bottom: 1px solid #27272a; padding: 2rem 0; }
-        .faq-item:last-child { border-bottom: none; }
-        .faq-item h3 { font-size: 1.3rem; margin-bottom: 0.8rem; color: var(--text-main); }
-        .faq-item p { margin: 0; max-width: 100%; }
+        .quote-card { background: rgba(255,255,255,0.02); padding: 2.5rem; border-radius: 16px; border: 1px solid var(--card-border); }
+        .quote-text { font-family: "Georgia", serif; font-size: 1.2rem; font-style: italic; color: #e4e4e7; margin-bottom: 1.5rem; }
+        .quote-author { font-weight: 700; color: var(--text-main); font-size: 0.9rem; text-transform: uppercase; }
 
         /* --- FOOTER --- */
-        footer {
-            border-top: 1px solid #27272a;
-            padding: 3rem 0;
-            text-align: center;
-            font-size: 0.9rem;
-            color: #666;
-        }
+        footer { border-top: 1px solid var(--card-border); padding: 4rem 0; text-align: center; font-size: 1rem; color: #666; background: #000; }
 
         /* --- RESPONSIVE --- */
+        @media (max-width: 992px) {
+            .showcase-row, .showcase-row:nth-child(even) { flex-direction: column; text-align: center; gap: 2rem; }
+            .showcase-text p { margin: 0 auto; }
+            .steps-grid, .pillar-grid { grid-template-columns: 1fr 1fr; }
+        }
         @media (max-width: 768px) {
-            h1 { font-size: 2.5rem; }
+            h1 { font-size: 2.8rem; }
             .hero { padding: 4rem 0; }
-            .carousel-btn { width: 35px; height: 35px; font-size: 1rem; padding: 0.5rem; }
-            .comparison-grid { grid-template-columns: 1fr; gap: 3rem; }
+            .steps-grid, .pillar-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -281,79 +143,124 @@
                 <span class="logo-text">Intrinsic.</span>
             </div>
             <nav>
-                <a href="app version/Intrinsic.dmg" download class="btn" style="margin:0; padding: 0.6rem 1.2rem; font-size: 0.9rem;">Download v2.0</a>
+                <a href="app version/Intrinsic-v3.0.dmg" download class="btn" style="margin:0; padding: 0.6rem 1.2rem; font-size: 0.95rem;">Download v3.0</a>
             </nav>
         </header>
 
         <section class="hero">
             <h1>Invest with institutional<br>precision.</h1>
-            <p>
-                Stop guessing. Turn complex financial data into clear buy signals using our suite of automated valuation engines.
-            </p>
+            <p>Stop guessing. Turn complex financial data into clear buy signals using our fully automated valuation engine, now powered by AI.</p>
             <div>
-                <a href="app version/Intrinsic.dmg" download class="btn"><i class="fa-brands fa-apple"></i> Download for Mac</a>
-                <a href="#features" class="btn btn-secondary">Learn More</a>
+                <a href="app version/Intrinsic-v3.0.dmg" download class="btn"><i class="fa-brands fa-apple"></i> Download for macOS</a>
             </div>
-
-            <div class="app-preview">
-                <button class="carousel-btn prev" id="prevBtn"><i class="fa-solid fa-chevron-left"></i></button>
-                <button class="carousel-btn next" id="nextBtn"><i class="fa-solid fa-chevron-right"></i></button>
-                
-                <div class="carousel-track" id="track">
-                    <div class="carousel-slide">
-                        <img src="images/screen1.png">
-                    </div>
-                    <div class="carousel-slide">
-                        <img src="images/screen2.png">
-                    </div>
-                    <div class="carousel-slide">
-                        <img src="images/screen3.png">
-                    </div>
-                    <div class="carousel-slide">
-                        <img src="images/screen4.png">
-                    </div>
-                    <div class="carousel-slide">
-                        <img src="images/screen5.png">
-                    </div>
-                </div>
+            <div class="video-container">
+                <video src="video/demo.mp4" autoplay loop muted playsinline></video>
             </div>
         </section>
+    </div>
 
-        <section class="v2-update">
-            <div class="container">
-                <div style="text-align: center;">
-                    <span class="v2-badge">Introducing Intrinsic v2.0</span>
-                    <h2 style="font-size: 2rem;">Smarter. Faster. More Insightful.</h2>
+    <!-- NEW SECTION: THE 3 PILLARS (Target, Privacy, Model) -->
+    <section class="three-pillars">
+        <div class="container">
+            <div class="pillar-grid">
+                <div class="pillar">
+                    <i class="fa-solid fa-crosshairs pillar-icon"></i>
+                    <h3>Who is Intrinsic for?</h3>
+                    <p>Designed for DIY value investors, finance students, and portfolio managers who are tired of broken spreadsheets. If you want institutional-grade DCF models without the Bloomberg Terminal price tag, this is for you.</p>
                 </div>
-                
-                <div class="v2-grid">
-                    <div class="v2-item">
-                        <h4><i class="fa-solid fa-bolt v2-icon"></i> Automated Data Engine</h4>
-                        <p>Powered by the <strong>Finnhub API</strong>. Say goodbye to manual entry. We fetch live financials instantly so you can focus on analysis.</p>
-                    </div>
-
-                    <div class="v2-item">
-                        <h4><i class="fa-solid fa-chart-line v2-icon"></i> Expanded Visuals</h4>
-                        <p>4 new institutional-grade charts: <strong>Analyst Consensus Trend</strong>, Competitor PE Analysis, 52-Week Highs, and Beta Risk Gauge.</p>
-                    </div>
-
-                    <div class="v2-item">
-                        <h4><i class="fa-solid fa-gem v2-icon"></i> Refined Aesthetic</h4>
-                        <p>A completely reimagined visual identity. Our new icon features a sleek, <strong>glass-morphism</strong> design that looks native to macOS.</p>
-                    </div>
-
-                    <div class="v2-item">
-                        <h4><i class="fa-solid fa-wand-magic-sparkles v2-icon"></i> Enhanced Workflow</h4>
-                        <p>New tools to speed up your process: a <strong>"Reset"</strong> button for rapid-fire analysis and a built-in educational guide for DCF mastery.</p>
-                    </div>
+                <div class="pillar">
+                    <i class="fa-solid fa-lock pillar-icon"></i>
+                    <h3>Privacy by Design</h3>
+                    <p>We believe your financial data is yours. Intrinsic is a <strong>Local-First</strong> application. Your watchlists, calculations, and API keys are stored securely on your Mac. Nothing is sent to our servers.</p>
                 </div>
+                <div class="pillar">
+                    <i class="fa-solid fa-key pillar-icon"></i>
+                    <h3>Bring Your Own Key</h3>
+                    <p>Instead of charging you expensive monthly subscriptions for data, Intrinsic uses a BYOK model. You plug in your own free Finnhub and Google Gemini API keys directly in the settings for unlimited use.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="steps-section">
+        <div class="container">
+            <div style="text-align: center;">
+                <h2>Fair Value in 4 simple steps.</h2>
+                <p>No spreadsheets. No broken formulas. Just pure financial analysis.</p>
+            </div>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h4>Enter Ticker</h4>
+                    <p>Type any US stock ticker. Intrinsic instantly fetches live financials, cash flows, and debt metrics via Finnhub.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h4>Estimate Growth</h4>
+                    <p>Input your expected Free Cash Flow growth rate (CAGR), using our 5-year historical average as a baseline.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h4>Set Desired Return</h4>
+                    <p>Enter your Discount Rate. You can manually set your target return or use our magic WACC calculator based on Beta.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">4</div>
+                    <h4>Determine Exit</h4>
+                    <p>Apply an Exit Multiple to calculate the terminal value. Intrinsic instantly computes the fair value and margin of safety.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="container">
+        <!-- ALTERNATING SHOWCASE SECTION -->
+        <section class="showcase">
+            <div class="showcase-row">
+                <div class="showcase-text">
+                    <h3>Never lose track of your research.</h3>
+                    <p>Intrinsic automatically logs every valuation you compute. Access your Analysis History to instantly reload previous assumptions, check how your intrinsic value has evolved, and see historical margins of safety at a glance.</p>
+                </div>
+                <div class="showcase-image"><img src="images/screen1.png" alt="Analysis History Interface"></div>
+            </div>
+
+            <div class="showcase-row">
+                <div class="showcase-text">
+                    <h3>The core of value investing.</h3>
+                    <p>Our main dashboard provides immediate clarity. Visualize the Base, Bear, and Bull scenarios simultaneously. The interactive Reverse DCF curve reveals exactly what growth rate the current market price is implying, exposing hidden risks or opportunities.</p>
+                </div>
+                <div class="showcase-image"><img src="images/screen2.png" alt="DCF Valuation Dashboard"></div>
+            </div>
+
+            <div class="showcase-row">
+                <div class="showcase-text">
+                    <h3>Advanced probabilistic modeling.</h3>
+                    <p>Move beyond static numbers. Intrinsic runs 1,000 Monte Carlo simulations to show you the probability distribution of your investment's fair value. Combine this with our customizable Sensitivity Matrix to see how macro-economic changes impact your margin of safety.</p>
+                </div>
+                <div class="showcase-image"><img src="images/screen3.png" alt="Monte Carlo and Sensitivity Matrix"></div>
+            </div>
+
+            <div class="showcase-row">
+                <div class="showcase-text">
+                    <h3>Export professional reports instantly.</h3>
+                    <p>Whether you're presenting to clients, managing a fund, or documenting your personal portfolio, Intrinsic generates clean, vector-based PDF reports with a single click (⌘E). Everything from the balance sheet to the DCF parameters is beautifully formatted.</p>
+                </div>
+                <div class="showcase-image"><img src="images/screen4.png" alt="Vector PDF Export"></div>
+            </div>
+
+            <div class="showcase-row">
+                <div class="showcase-text">
+                    <h3>Your personal AI equity analyst.</h3>
+                    <p>Powered by Google's Gemini Flash, the built-in AI assistant synthesizes your entire valuation dataset in seconds. It highlights structural strengths, exposes key risks, and provides a clear, data-driven verdict to guide your decision.</p>
+                </div>
+                <div class="showcase-image"><img src="images/screen5.png" alt="AI Investment Analysis Sheet"></div>
             </div>
         </section>
 
         <section id="features" class="features">
             <div style="text-align: center;">
                 <h2>A complete valuation suite.</h2>
-                <p>9 powerful tools to determine the buy price, all in one view.</p>
+                <p>Powerful tools to determine the buy price, all in one view.</p>
             </div>
             
             <div class="grid">
@@ -362,176 +269,107 @@
                     <h3>Automated DCF</h3>
                     <p>Instant intrinsic value calculation. 5-year projections based on FCF with automated Finnhub data fetching.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-magnifying-glass-chart"></i></div>
                     <h3>Reverse DCF</h3>
                     <p>Reality check. See exactly what growth rate the market price implies, and compare it to yours.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
                     <h3>Magic WACC</h3>
                     <p>Stop guessing the discount rate. We automatically calculate WACC based on live Beta and Risk-Free rates.</p>
                 </div>
-
-                <div class="card">
-                    <div class="icon"><i class="fa-solid fa-gauge-high"></i></div>
-                    <h3>Exotic Beta Gauge</h3>
-                    <p>Visual risk assessment. Instantly see if a stock is Low Volatility, Market Average, or Speculative.</p>
-                </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-users-viewfinder"></i></div>
                     <h3>Competitor Analysis</h3>
                     <p>Context matters. Automatically compares your stock's P/E ratio against its top 3 direct industry peers.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-table-cells"></i></div>
                     <h3>Sensitivity Matrix</h3>
-                    <p>7x7 Heatmap. Visualize how small changes in discount rates and growth estimates impact the fair value.</p>
+                    <p>Customizable Heatmap. Visualize how small changes in discount rates and growth impact the fair value.</p>
                 </div>
-
                 <div class="card">
                     <div class="icon"><i class="fa-solid fa-scale-balanced"></i></div>
-                    <h3>PEG Ratio (Lynch)</h3>
-                    <p>Growth-adjusted valuation. Determine if a high P/E is justified by the company's growth rate.</p>
-                </div>
-
-                <div class="card">
-                    <div class="icon"><i class="fa-solid fa-money-bill-trend-up"></i></div>
-                    <h3>FCF Yield Gauge</h3>
-                    <p>The "Market Payback". Instantly see how much free cash flow the company generates relative to its price.</p>
-                </div>
-
-                <div class="card">
-                    <div class="icon"><i class="fa-solid fa-heart-pulse"></i></div>
-                    <h3>Risk Assessment</h3>
-                    <p>Visual Balance Sheet check. Net Cash vs. Debt analysis bars to ensure the company is solvent.</p>
+                    <h3>Alternative Valuations</h3>
+                    <p>Cross-check your DCF with the classic Benjamin Graham Formula and Historical P/E ratio projections.</p>
                 </div>
             </div>
         </section>
 
-        <section class="comparison">
-            <div class="container">
-                <div class="comparison-grid">
-                    <div class="comparison-col bad">
-                        <h3><i class="fa-solid fa-file-excel"></i> The Spreadsheet Way</h3>
-                        <ul class="comparison-list">
-                            <li><i class="fa-solid fa-xmark"></i> Broken formulas and #REF! errors</li>
-                            <li><i class="fa-solid fa-xmark"></i> Manual data entry from Yahoo Finance</li>
-                            <li><i class="fa-solid fa-xmark"></i> Cluttered, distracted interface</li>
-                            <li><i class="fa-solid fa-xmark"></i> 30 minutes per valuation</li>
-                        </ul>
-                    </div>
-                    <div class="comparison-col good">
-                        <h3><i class="fa-solid fa-bolt"></i> The Intrinsic Way</h3>
-                        <ul class="comparison-list">
-                            <li><i class="fa-solid fa-check"></i> <strong>Automated</strong> financial data fetching</li>
-                            <li><i class="fa-solid fa-check"></i> Error-free, tested financial models</li>
-                            <li><i class="fa-solid fa-check"></i> Clean, focused macOS native UI</li>
-                            <li><i class="fa-solid fa-check"></i> <strong>10 seconds</strong> per valuation</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="quotes-section">
-            <div class="container">
-                <h2>Wisdom of the Masters</h2>
-                <p>Intrinsic is built upon the timeless principles of Value Investing.</p>
+        <!-- NEW SECTION: PRICING -->
+        <section class="pricing-section">
+            <h2>Institutional tools.<br>Without the subscription.</h2>
+            <p>We hate monthly fees as much as you do.</p>
+            
+            <div class="pricing-card">
+                <h3>Intrinsic Native App</h3>
+                <div class="price-tag">$0 <span>/ forever</span></div>
+                <p style="color: var(--text-main); font-weight: bold; margin-bottom: 1rem;">100% Free. No hidden fees.</p>
                 
-                <div class="quote-grid">
-                    <div class="quote-card">
-                        <p class="quote-text">"Price is what you pay. Value is what you get."</p>
-                        <div class="quote-author">Warren Buffett</div>
-                        <div class="quote-role">Chairman, Berkshire Hathaway</div>
-                    </div>
-
-                    <div class="quote-card">
-                        <p class="quote-text">"The function of the margin of safety is, in essence, to render an accurate estimate of the future unnecessary."</p>
-                        <div class="quote-author">Benjamin Graham</div>
-                        <div class="quote-role">The Father of Value Investing</div>
-                    </div>
-
-                    <div class="quote-card">
-                        <p class="quote-text">"People who confuse the P/E ratio with the PEG ratio are making a huge mistake."</p>
-                        <div class="quote-author">Peter Lynch</div>
-                        <div class="quote-role">Legendary Manager, Magellan Fund</div>
-                    </div>
+                <ul class="pricing-list">
+                    <li><i class="fa-solid fa-check"></i> Unlimited DCF Valuations</li>
+                    <li><i class="fa-solid fa-check"></i> Unlimited PDF Exports</li>
+                    <li><i class="fa-solid fa-check"></i> Monte Carlo & Sensitivity Matrix</li>
+                    <li><i class="fa-solid fa-check"></i> Bring Your Own Key (Finnhub API)</li>
+                    <li><i class="fa-solid fa-check"></i> Bring Your Own Key (Gemini AI)</li>
+                </ul>
+                <br>
+                <a href="app version/Intrinsic-v3.0.dmg" download class="btn" style="width: 100%; text-align: center;">Download Now</a>
+            </div>
+        </section>
+        
+        <section class="quotes-section">
+            <h2>Wisdom of the Masters</h2>
+            <p>Intrinsic is built upon the timeless principles of Value Investing.</p>
+            
+            <div class="quote-grid">
+                <div class="quote-card">
+                    <p class="quote-text">"Price is what you pay. Value is what you get."</p>
+                    <div class="quote-author">Warren Buffett</div>
+                </div>
+                <div class="quote-card">
+                    <p class="quote-text">"The function of the margin of safety is to render an accurate estimate of the future unnecessary."</p>
+                    <div class="quote-author">Benjamin Graham</div>
                 </div>
             </div>
         </section>
 
         <section class="faq">
-            <div class="container">
-                <h2 style="text-align: center;">Frequently Asked Questions</h2>
-                
+            <h2 style="text-align: center; margin-bottom: 1rem;">Frequently Asked Questions</h2>
+            <p style="text-align: center; margin-bottom: 3rem;">Everything you need to know about Intrinsic.</p>
+            
+            <div class="faq-grid">
                 <div class="faq-item">
                     <h3>Is the market data real-time?</h3>
-                    <p>Intrinsic fetches end-of-day data for most metrics and real-time quotes when available via standard public financial APIs. It's designed for long-term investors, not day traders.</p>
+                    <p>Intrinsic fetches end-of-day data for most metrics and real-time quotes when available via standard public financial APIs. It's designed for long-term fundamental investors, not high-frequency day traders.</p>
                 </div>
-
                 <div class="faq-item">
                     <h3>Which stock markets are supported?</h3>
-                    <p>We support only US major global exchanges including NYSE, NASDAQ. Simply type the ticker.</p>
+                    <p>We currently support major global exchanges including NYSE and NASDAQ. Simply type the ticker.</p>
                 </div>
-
                 <div class="faq-item">
                     <h3>Is my financial data private?</h3>
-                    <p>Yes, absolutely. All calculations and assumption inputs happen locally on your Mac. We do not track your portfolio or your watchlists.</p>
+                    <p>Yes, absolutely. All calculations and assumption inputs happen locally on your Mac. We do not track your portfolio, your watchlists, or your API keys. You are in total control.</p>
                 </div>
-
                 <div class="faq-item">
-                    <h3>Do I need to be a finance expert?</h3>
-                    <p>No. While the tools are professional-grade (DCF, PEG), the interface is designed to be intuitive. We provide tooltips and context for every input.</p>
+                    <h3>Do I need to be a finance expert to use it?</h3>
+                    <p>No. While the tools are professional-grade (DCF, PEG, Monte Carlo), the interface is designed to be highly intuitive. We provide helpful tooltips and context for every financial input.</p>
                 </div>
             </div>
         </section>
-
-        <footer>
-            <p>&copy; 2026 Intrinsic App. Built for Value Investors.</p>
-            <p style="font-size: 0.8rem; margin-top: 10px; color: #444;">Financial data provided for informational purposes only. Invest responsibly.</p>
-        </footer>
     </div>
 
-    <script>
-        const track = document.getElementById('track');
-        const prevBtn = document.getElementById('prevBtn');
-        const nextBtn = document.getElementById('nextBtn');
-        const slides = document.querySelectorAll('.carousel-slide');
-        
-        let currentIndex = 0;
-        const totalSlides = slides.length;
-        const intervalTime = 5000;
-        let slideInterval;
-
-        function updateCarousel() {
-            track.style.transform = `translateX(-${currentIndex * 100}%)`;
-        }
-
-        function nextSlide() {
-            currentIndex++;
-            if (currentIndex >= totalSlides) { currentIndex = 0; }
-            updateCarousel();
-        }
-
-        function prevSlide() {
-            currentIndex--;
-            if (currentIndex < 0) { currentIndex = totalSlides - 1; }
-            updateCarousel();
-        }
-
-        function startSlideTimer() { slideInterval = setInterval(nextSlide, intervalTime); }
-        function resetSlideTimer() { clearInterval(slideInterval); startSlideTimer(); }
-
-        nextBtn.addEventListener('click', () => { nextSlide(); resetSlideTimer(); });
-        prevBtn.addEventListener('click', () => { prevSlide(); resetSlideTimer(); });
-        window.addEventListener('resize', updateCarousel);
-        startSlideTimer();
-    </script>
+    <footer>
+        <div class="container">
+            <div class="logo" style="justify-content: center; margin-bottom: 1.5rem;">
+                <img src="App Icon/AppIcons/icon-transparent.png" alt="Intrinsic Logo" class="logo-img" style="width: 32px; height: 32px;">
+                <span class="logo-text" style="font-size: 1.2rem;">Intrinsic.</span>
+            </div>
+            <p>&copy; 2026 Intrinsic App. Built for Value Investors.</p>
+            <p style="font-size: 0.8rem; margin-top: 10px; color: #444;">Financial data provided for informational purposes only. Invest responsibly.</p>
+        </div>
+    </footer>
 
 </body>
 </html>
